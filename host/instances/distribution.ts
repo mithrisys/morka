@@ -162,6 +162,8 @@ export async function buildMacBundle(
     keepEnglishLocalizations(join(contents, "Frameworks", "Electron Framework.framework", "Resources")),
   ]);
   await writeDesktopResources(engine, resources, name, kit, toolchain);
+  await copyFile(join(dirname(electron), "LICENSE"), join(resources, "LICENSE.electron.txt"));
+  await copyFile(join(dirname(electron), "LICENSES.chromium.html"), join(resources, "LICENSES.chromium.html"));
   await rm(join(resources, "default_app.asar"), { force: true });
   await rename(join(contents, "MacOS", "Electron"), join(contents, "MacOS", "Morka"));
   await copyFile(join(dist, "branding", "Morka.icns"), join(resources, appIcon));

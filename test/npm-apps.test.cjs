@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { test } = require('node:test');
+const { before, test } = require('node:test');
 const { mkdtemp, mkdir, readFile, writeFile, readdir, rm, cp } = require('node:fs/promises');
 const { join, dirname } = require('node:path');
 const { tmpdir } = require('node:os');
@@ -11,13 +11,19 @@ const { AppProxy } = require('../dist/project/app-proxy.js');
 const { AppPackages, writableTree } = require('../dist/project/packages.js');
 const { ManagedRuntime } = require('../dist/project/managed-runtime.js');
 const { readManifest, compileProject } = require('../dist/project/project.js');
-const { bundledToolchain } = require('../dist/project/toolchain.js');
+const { npmEntry } = require('../dist/project/toolchain.js');
 const { ChatSessions } = require('../dist/agents/sessions.js');
 const { AgentRunner } = require('../dist/agent-actions/runner.js');
 const { snapshot, digest } = require('../dist/project/files.js');
 
 const bytes = value => Buffer.from(typeof value === 'string' ? value : JSON.stringify(value));
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+before(async () => {
+  if (process.platform !== 'darwin') {
+    process.env.MORKA_LOCAL_NODE = process.execPath;
+    process.env.MORKA_LOCAL_NPM = await npmEntry(process.execPath, process.env.npm_execpath);
+  }
+});
 function appSource(extra = {}, pkg = {}) {
   return new Map(Object.entries({
     'morka.project.json': { version: 1, runtime: { type: 'node' } },
@@ -61,7 +67,7 @@ test('isolated npm resolves a lockfile, installs arbitrary local packages, build
   assert.equal((await snapshot(artifact.directory)).has('node_modules/app-library/index.cjs'),false);
 }));
 
-test('package lifecycle scripts cannot read or overwrite user data outside their preparation stage',()=>fixture(async home=>{
+test('package lifecycle scripts cannot read or overwrite user data outside their preparation stage', { skip: process.platform !== 'darwin' && 'Requires sandbox-exec' }, ()=>fixture(async home=>{
   const secret=join(home,'user-data.txt');await writeFile(secret,'preserve user data');
   const installer=`const fs=require('node:fs');let blocked=0;try{fs.readFileSync(${JSON.stringify(secret)})}catch{blocked++}try{fs.writeFileSync(${JSON.stringify(secret)},'overwrite')}catch{blocked++}fs.writeFileSync('isolation.txt',String(blocked));`;
   const source=appSource({'install.cjs':installer},{scripts:{start:'node server.cjs',postinstall:'node install.cjs'}});
@@ -70,7 +76,7 @@ test('package lifecycle scripts cannot read or overwrite user data outside their
   assert.equal(await readFile(secret,'utf8'),'preserve user data');
 }));
 
-test('native Node-API packages build against bundled headers and run under bundled Node',()=>fixture(async home=>{
+test('native Node-API packages build against bundled headers and run under bundled Node', { skip: process.platform !== 'darwin' && 'Requires the bundled macOS toolchain and Xcode' }, ()=>fixture(async home=>{
   const native=`#include <node_api.h>\nstatic napi_value init(napi_env env,napi_value exports){napi_value n;napi_create_int32(env,42,&n);napi_set_named_property(env,exports,"answer",n);return exports;}\nNAPI_MODULE(NODE_GYP_MODULE_NAME,init)\n`;
   const source=appSource({
     'vendor/library/package.json':{name:'app-library',version:'1.0.0',main:'index.cjs',scripts:{install:'node install.cjs'}},
@@ -103,13 +109,13 @@ test('managed releases retain the stable origin, drain writes, preserve data and
   const activations=[];let before=0;
   const callbacks={beforeActivate:async()=>{before++},activate:async(url,styles)=>{activations.push({url,styles});if(styles)await(await fetch(url+'styles.css')).text();}};
   try{
-    const initial=(await runtime.prepare(appSource(),{updateLock:true})).source;
+    const {source: initial, toolchain}=await runtime.prepare(appSource(),{updateLock:true});
     const spec=readManifest(initial).runtime;
     await runtime.update(initial,spec,callbacks);
     const url=runtime.url;
     assert.equal(await(await fetch(url)).text(),'first');
     const env=await(await fetch(url+'env')).json();
-    assert.ok(env.node.endsWith('/toolchain/bin/node'));assert.equal(env.secret,undefined);assert.equal(env.active,true);
+    assert.equal(env.node,toolchain.node);assert.equal(env.secret,undefined);assert.equal(env.active,true);
     const css=new Map(initial);css.set('styles.css',bytes('h1{color:orange}'));
     const firstRecord=JSON.parse(await readFile(join(home,'runtime/active.json'),'utf8'));
     await runtime.update(css,spec,callbacks);
@@ -269,7 +275,7 @@ test('a real registry tarball and installation-created assets survive offline im
     'index.cjs':"module.exports='downloaded npm module';",
     'install.cjs':"const fs=require('node:fs'),path=require('node:path'),root=path.join(process.env.HOME,'.cache');fs.mkdirSync(root,{recursive:true});fs.writeFileSync(path.join(root,'asset.txt'),'downloaded asset');fs.writeFileSync(path.join(root,'settings.txt'),'default settings');",
   }).map(([path,value])=>[path,bytes(value)])));
-  const packed=spawnSync('/usr/bin/tar',['-czf',join(home,'module.tgz'),'-C',registryRoot,'package'],{encoding:'utf8'});
+  const packed=spawnSync('tar',['-czf',join(home,'module.tgz'),'-C',registryRoot,'package'],{encoding:'utf8'});
   assert.equal(packed.status,0,packed.stderr);
   const tarball=await readFile(join(home,'module.tgz'));
   let requests=0,registry;

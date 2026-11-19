@@ -1,0 +1,100 @@
+name: Desktop downloads
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/desktop.yml'
+      - '.github/workflows/release.yml'
+      - 'scripts/releases/**'
+      - 'host/**'
+      - 'packages/**'
+      - 'scripts/build.mts'
+      - 'scripts/npm-kit.mts'
+      - 'test/desktop-*'
+      - 'package*.json'
+      - 'CHANGELOG.md'
+  workflow_call:
+    inputs:
+      commit:
+        description: Verified release commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Package on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2022, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run package:desktop
+      - name: Mount and test the disk image
+        if: runner.os == 'macOS'
+        run: bash scripts/releases/test-dmg.sh release/downloads/*.dmg
+      - name: Install and test the per-user setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem release/downloads/*.exe).FullName
+          $dir = Join-Path $env:RUNNER_TEMP "Morka Desktop"
+          $install = Start-Process -FilePath $setup -ArgumentList "/S", "/D=$dir" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer failed with exit code $($install.ExitCode)" }
+          node test/desktop-download.mjs "$dir/Morka.exe" "$dir/resources"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $uninstall = Start-Process -FilePath "$dir/Uninstall Morka.exe" -ArgumentList "/S" -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller failed with exit code $($uninstall.ExitCode)" }
+      - name: Extract and test the Linux application
+        if: runner.os == 'Linux'
+        run: |
+          tar -xzf release/downloads/*.tar.gz -C "$RUNNER_TEMP"
+          xvfb-run -a node test/desktop-download.mjs "$RUNNER_TEMP/morka/morka" "$RUNNER_TEMP/morka/resources"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ runner.os }}
+          path: release/downloads/*
+          if-no-files-found: error
+          compression-level: 0
+
+  verify:
+    name: Verify release notes and downloads
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.commit || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: downloads
+      - run: |
+          node scripts/releases/metadata.mjs downloads release-notes.md
+          (cd downloads && sha256sum --check SHA256SUMS.txt)
+          mv downloads/SHA256SUMS.txt .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata
+          path: |
+            SHA256SUMS.txt
+            release-notes.md
+          if-no-files-found: error

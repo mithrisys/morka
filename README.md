@@ -4,6 +4,10 @@ Morka is an Electron app for building and running projects with Codex, Claude Co
 
 For development setup and checks, see [Contributing](CONTRIBUTING.md).
 
+## Desktop downloads
+
+Desktop releases provide a macOS arm64 DMG, a Windows x64 installer, and a Linux x64 tarball. On macOS, drag Morka into Applications. On Windows, run the setup executable. On Linux, extract the archive and run `./morka/morka` in a graphical desktop session. Each download bundles Node.js and npm. The release notes list changes, platform limitations and upgrade steps. Verify a download against the SHA-256 digest in `SHA256SUMS.txt`. [GitHub Releases](https://github.com/mithrisys/morka/releases)
+
 ## Create and open projects
 
 To launch Morka from source on macOS, Windows, or Linux, install Node.js 24 or later and npm. Run these commands from the Morka repository root.

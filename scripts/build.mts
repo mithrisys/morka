@@ -25,6 +25,7 @@ for (const dependency of ["dompurify", "github-slugger", "highlight.js", "marked
 await cp(join(root, "host/renderer/licenses/marked-footnote.txt"), join(licenses, "marked-footnote.txt"));
 await build({
   entryPoints: {
+    "renderer/app-setup": join(root, "host/renderer/app-setup.ts"),
     "renderer/renderer": join(root, "host/renderer/renderer.ts"),
     "app-runtime/bridge": join(root, "host/app-runtime/bridge.ts"),
   },

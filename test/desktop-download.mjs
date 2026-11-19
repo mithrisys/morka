@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
@@ -21,6 +21,10 @@ const work = await realpath(await mkdtemp(join(tmpdir(), "morka-download-")));
 const spec = { version: 1, id: randomUUID(), name: "Release Smoke", iconColor: 0 };
 let child, profile;
 try {
+  if (process.platform !== "darwin") {
+    const locales = await readdir(join(resources, "../locales"));
+    assert.ok(locales.includes("en-US.pak") && locales.every(name => /^en(?:-[A-Z]+)?\.pak$/.test(name)));
+  }
   const appRoot = join(resources, "app");
   const tools = await bundledToolchain(join(appRoot, "dist/toolchain"));
   assert.equal(execFileSync(tools.node, [tools.npm, "--version"], { encoding: "utf8" }).trim(), JSON.parse(tools.identity).npm);

@@ -6,6 +6,7 @@
   "main": "dist/electron/main.js",
   "scripts": {
     "build": "node scripts/build.mts",
+    "check:versions": "node scripts/check-versions.mjs",
     "start": "npm run build -- --portable && node packages/runtime/bin/morka.cjs launcher",
     "package:mac": "npm run build && node scripts/package-mac.mts",
     "test:apps": "node --test test/npm-apps.test.cjs test/draft-sync.test.cjs test/runtime-lifecycle.test.cjs test/branding.test.cjs test/portable.test.cjs",

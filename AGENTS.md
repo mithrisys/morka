@@ -38,4 +38,4 @@ Run `npm run typecheck` for TypeScript changes. On macOS, `npm test` builds the 
 | Preview state or desktop installation | `npm run test:electron` on macOS |
 | macOS packaging or the bundled toolchain | `npm run test:package:mac` on macOS |
 
-Before handing off, review the diff against the base, run the relevant checks, and report the behavior verified and any checks still pending. Keep each step in a focused, passing commit.
+Before handing off, review the diff against the base, run `npm run check:history` on the committed branch, run the relevant checks above, and report the behavior verified and any checks still pending. Keep each step in a focused, passing commit.

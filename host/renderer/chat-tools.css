@@ -1,0 +1,83 @@
+.icon-attach { --glyph: url("icons/attach.png"); }
+.icon-document { --glyph: url("icons/document.png"); }
+.icon-folder { --glyph: url("icons/folder.png"); }
+.icon-edit { --glyph: url("icons/edit.png"); }
+.icon-search { --glyph: url("icons/search.png"); }
+.icon-terminal { --glyph: url("icons/terminal.png"); }
+
+.composer { position: relative; }
+#attach-toggle { anchor-name: --attach-toggle; inline-size: 26px; }
+#attach-toggle .icon { inline-size: 18px; block-size: 18px; }
+.attachment-list { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+#pending-attachments { margin: 2px 2px 9px; }
+.attachment-chip { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; border: 1px solid #e1e3e9; border-radius: 8px; background: #f4f5f8; }
+.attachment-open, .attachment-remove { display: inline-flex; align-items: center; border: 0; background: transparent; color: #565d70; }
+.attachment-open { min-width: 0; gap: 6px; padding: 6px 8px; font-size: 11px; }
+.attachment-open > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-open .icon { inline-size: 15px; block-size: 15px; }
+.attachment-open:hover { color: #20232e; }
+.attachment-remove { padding: 5px; margin-inline-end: 3px; border-radius: 5px; }
+.attachment-remove:hover:enabled { background: #e6e8ef; }
+.attachment-remove .icon { inline-size: 12px; block-size: 12px; }
+.attachment-remove:disabled { opacity: .4; cursor: default; }
+.message-attachments { margin-top: 7px; }
+.composer.dragging-files::before { content: "Drop files or folders"; position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; border: 2px dashed #8d85ce; border-radius: inherit; background: #f5f3fff2; color: #5147c9; pointer-events: none; }
+#attachment-menu {
+  inset: auto 20px 80px auto;
+  min-width: 172px;
+  padding: 5px;
+  border: 1px solid #e4e5e9;
+  border-radius: 12px;
+  background: white;
+  color: #41434b;
+  box-shadow: 0 6px 24px #20232e1f, 0 1px 4px #20232e0a;
+  opacity: 0;
+  transform: translateY(4px) scale(.98);
+  transition: opacity var(--dialog-duration) var(--motion-ease),
+    transform var(--dialog-duration) var(--motion-ease),
+    display var(--dialog-duration) allow-discrete,
+    overlay var(--dialog-duration) allow-discrete;
+}
+#attachment-menu:popover-open { opacity: 1; transform: none; }
+@starting-style { #attachment-menu:popover-open { opacity: 0; transform: translateY(4px) scale(.98); } }
+@supports (position-area: top) {
+  #attachment-menu { position-anchor: --attach-toggle; inset: auto; position-area: block-start span-inline-end; margin: 0 0 6px; }
+}
+#attachment-menu button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 9px; border: 0; border-radius: 7px; background: transparent; color: inherit; text-align: start; font-size: 12px; }
+#attachment-menu button:hover, #attachment-menu button:focus-visible { background: #eceef1; }
+#attachment-menu .icon { inline-size: 17px; block-size: 17px; }
+
+.turn-activity { min-width: 0; border: 1px solid #e8eaf0; border-radius: 10px; background: #f8f9fb; }
+.turn-activity summary { list-style: none; cursor: pointer; }
+.turn-activity summary::-webkit-details-marker { display: none; }
+.turn-activity > summary { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 10px; }
+.activity-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; color: #5b6274; }
+.activity-meta { flex: none; font-size: 10px; color: #8a8f9d; white-space: nowrap; }
+.turn-activity > summary::after { content: ""; flex: none; width: 12px; height: 12px; background: url("icons/chevron.png") center / contain no-repeat; opacity: .6; transition: transform var(--dialog-duration) var(--motion-ease); }
+.turn-activity[open] > summary::after { transform: rotate(180deg); }
+.activity-indicator { display: inline-grid; place-items: center; flex: none; width: 13px; height: 13px; color: #8a8f9d; font-size: 12px; }
+.turn-activity[data-status="running"] .activity-indicator { border: 1.5px solid #d7d9e3; border-top-color: #68618f; border-radius: 50%; animation: activity-spin 1.1s linear infinite; }
+.turn-activity[data-status="completed"] .activity-indicator::after { content: "✓"; }
+.turn-activity[data-status="failed"] .activity-indicator::after { content: "!"; color: #aa4254; font-weight: 700; }
+.turn-activity[data-status="stopped"] .activity-indicator::after { content: "■"; font-size: 8px; }
+@keyframes activity-spin { to { transform: rotate(360deg); } }
+.activity-list { padding: 4px 10px 8px; border-top: 1px solid #e8eaf0; }
+.activity-list:empty { display: none; }
+.activity-notice { margin: 0; padding: 8px 10px; font-size: 11px; color: #8c3b4c; overflow-wrap: anywhere; }
+.activity-entry { min-width: 0; }
+.activity-entry > summary { display: flex; align-items: center; gap: 7px; padding: 6px 0; font-size: 11px; color: #6a7081; }
+.activity-entry > summary > span:last-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-entry .icon { inline-size: 14px; block-size: 14px; opacity: .7; }
+.activity-entry > summary::after { content: "✓"; color: #989dab; font-size: 10px; }
+.activity-entry[data-status="running"] > summary::after { content: ""; width: 8px; height: 8px; border: 1px solid #d7d9e3; border-top-color: #78718f; border-radius: 50%; animation: activity-spin 1.1s linear infinite; }
+.activity-entry[data-status="failed"] > summary::after { content: "!"; color: #aa4254; }
+.activity-entry[data-status="stopped"] > summary::after { content: "■"; font-size: 6px; }
+.activity-detail { max-height: 240px; overflow: auto; margin: 0 0 8px 20px; padding: 9px; border: 1px solid #e4e6ed; border-radius: 7px; background: #f0f2f6; color: #606778; font: 10px / 1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; direction: ltr; text-align: left; }
+@supports (interpolate-size: allow-keywords) {
+  .turn-activity, .activity-entry { interpolate-size: allow-keywords; }
+  .turn-activity::details-content, .activity-entry::details-content { block-size: 0; opacity: 0; overflow: clip; transition: block-size var(--dialog-duration) var(--motion-ease), opacity var(--dialog-duration), content-visibility var(--dialog-duration) allow-discrete; }
+  .turn-activity[open]::details-content, .activity-entry[open]::details-content { block-size: auto; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .activity-indicator, .activity-entry > summary::after { animation: none !important; }
+}

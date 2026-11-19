@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; frame-src http://127.0.0.1:* http://localhost:* http://[::1]:* https://127.0.0.1:* https://localhost:* https://[::1]:*; base-uri 'none'; form-action 'none'">
+  <link rel="preload" href="icons/brain-weight.png" as="image">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="highlight.css">
+  <link rel="stylesheet" href="markdown.css">
+  <link rel="stylesheet" href="chat-tools.css">
+  <script src="renderer.js" defer></script>
+  <script src="app-setup.js" defer></script>
+</head>
+<body>
+  <header class="titlebar">
+    <div class="wordmark"></div>
+    <div class="titlebar-actions">
+      <span id="runtime-status" role="status" hidden></span>
+      <div class="toolbar" role="group" aria-label="Workspace controls">
+        <button type="button" id="agent-setup-open" class="app-button" aria-haspopup="dialog" aria-controls="agent-setup">AI setup</button>
+        <button type="button" id="clone-app" class="icon-button" aria-label="Clone" title="Clone" aria-haspopup="dialog" hidden>
+          <span class="icon icon-clone" aria-hidden="true"></span>
+        </button>
+        <button type="button" id="runtime-retry" class="icon-button" aria-label="Retry starting app" title="Retry starting app" hidden>
+          <span class="icon icon-play" aria-hidden="true"></span>
+        </button>
+        <button type="button" id="shadows-toggle" class="icon-button" aria-label="Shadows" title="Shadows" aria-haspopup="dialog" aria-controls="shadows-dialog">
+          <span class="icon icon-shadow" aria-hidden="true"></span>
+        </button>
+        <button type="button" id="chat-toggle" class="icon-button" aria-controls="chat-panel" aria-expanded="false" aria-label="Show chat" title="Show chat">
+          <span class="icon icon-chat" aria-hidden="true"></span>
+        </button>
+        <span id="agent-indicator" class="agent-indicator" data-active="false" role="status" aria-label="Agent idle" title="Agent idle">
+          <span class="icon icon-brain" aria-hidden="true"></span>
+        </span>
+      </div>
+    </div>
+  </header>
+  <main class="workspace">
+    <section class="preview-panel" aria-label="Project preview">
+      <iframe id="preview" name="morka-preview" title="Project preview" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+    </section>
+    <section id="chat-panel" class="chat-panel" aria-labelledby="chat-heading" inert>
+      <header class="chat-heading">
+        <h1 id="chat-heading">Chat</h1>
+        <button type="button" id="new-chat" class="icon-button" aria-label="New chat" title="New chat">
+          <span class="icon icon-plus" aria-hidden="true"></span>
+        </button>
+      </header>
+      <div class="chat-navigation" hidden>
+        <select id="chat-picker" class="chat-select" aria-label="Conversations"></select>
+      </div>
+      <div class="feed" id="feed">
+        <div class="intro" id="intro">
+          <h2>What should we build?</h2>
+        </div>
+        <div class="transcript" id="transcript" role="log" aria-label="Messages"></div>
+      </div>
+      <form id="composer" class="composer">
+        <div id="pending-attachments" class="attachment-list" aria-label="Attached files" hidden></div>
+        <label for="prompt" class="sr-only">Message</label>
+        <textarea id="prompt" dir="auto" rows="3" maxlength="4000" placeholder="Ask for a change…"></textarea>
+        <span id="status" role="status"></span>
+        <div class="composer-actions">
+          <button type="button" id="attach-toggle" class="icon-button" aria-label="Attach files or folder" title="Attach files or folder" popovertarget="attachment-menu">
+            <span class="icon icon-attach" aria-hidden="true"></span>
+          </button>
+          <div class="composer-options">
+            <select id="agent-provider" class="chat-select" aria-label="Agent" title="Agent"><option value="codex">Codex</option></select>
+            <select id="model" class="chat-select" aria-label="Model" disabled><option value="">Loading…</option></select>
+            <select id="effort" class="chat-select" aria-label="Reasoning effort" disabled><option value="">Default</option></select>
+          </div>
+          <button type="submit" id="send" class="icon-button send" aria-label="Send" title="Send" disabled>
+            <span class="icon icon-send" aria-hidden="true"></span>
+          </button>
+          <button type="button" id="stop" class="icon-button stop" aria-label="Stop agent" title="Stop agent" hidden>
+            <span class="icon icon-stop" aria-hidden="true"></span>
+          </button>
+        </div>
+      </form>
+      <div id="attachment-menu" popover="auto" aria-label="Attach">
+        <button type="button" id="attach-files"><span class="icon icon-document" aria-hidden="true"></span>Attach files</button>
+        <button type="button" id="attach-folder"><span class="icon icon-folder" aria-hidden="true"></span>Attach folder</button>
+      </div>
+    </section>
+  </main>
+  <dialog id="agent-setup" class="app-setup" aria-labelledby="agent-setup-title">
+    <h2 id="agent-setup-title">AI setup</h2>
+    <p id="agent-setup-status" role="status" hidden></p>
+    <ul id="agent-setup-accounts"></ul>
+    <div class="setup-actions">
+      <button type="button" id="agent-setup-reset" class="app-button" hidden>Reset app access</button>
+      <button type="button" id="agent-setup-refresh" class="app-button">Check again</button>
+      <form method="dialog"><button type="submit" class="app-button primary">Done</button></form>
+    </div>
+  </dialog>
+  <dialog id="shadows-dialog" class="app-setup shadows-dialog" aria-labelledby="shadows-heading">
+    <header class="shadows-heading">
+      <h2 id="shadows-heading">Installed Shadows</h2>
+      <button type="button" id="shadows-close" class="icon-button" aria-label="Close Shadows" title="Close Shadows">
+        <span class="icon icon-close" aria-hidden="true"></span>
+      </button>
+    </header>
+    <p id="shadows-empty" hidden>No Shadows installed.</p>
+    <ul id="shadows-list" class="shadows-list"></ul>
+    <p id="shadows-status" role="status" hidden></p>
+    <div class="shadows-actions" role="group" aria-label="Shadow actions">
+      <button type="button" id="shadow-import" class="icon-button shadow-action" aria-label="Install Shadow…" title="Install Shadow…">
+        <span class="icon icon-import" aria-hidden="true"></span>
+      </button>
+      <button type="button" id="shadow-open" class="icon-button shadow-action" aria-label="Open Shadow…" title="Open Shadow…">
+        <span class="icon icon-open-folder" aria-hidden="true"></span>
+      </button>
+      <button type="button" id="shadow-new" class="icon-button shadow-action primary" aria-label="New Shadow…" title="New Shadow…" aria-controls="shadow-create" aria-expanded="false">
+        <span class="icon icon-plus" aria-hidden="true"></span>
+      </button>
+    </div>
+    <form id="shadow-create" hidden>
+      <label for="shadow-name">Shadow name</label>
+      <input id="shadow-name" type="text" maxlength="72" required>
+      <div class="setup-actions">
+        <button type="button" id="shadow-create-cancel" class="app-button">Cancel</button>
+        <button type="submit" class="app-button primary">Choose Folder…</button>
+      </div>
+    </form>
+  </dialog>
+  <span id="app-install-status" class="install-notice" role="status" hidden></span>
+</body>
+</html>

@@ -1,0 +1,43 @@
+.markdown { white-space: normal; line-height: 1.65; }
+.markdown > :first-child { margin-block-start: 0; }
+.markdown > :last-child { margin-block-end: 0; }
+.markdown p, .markdown ul, .markdown ol, .markdown blockquote,
+.markdown pre, .markdown .markdown-table, .markdown dl, .markdown details { margin: 0 0 12px; }
+.markdown :is(h1, h2, h3, h4, h5, h6) { margin: 20px 0 9px; font-weight: 650; line-height: 1.35; letter-spacing: -.02em; }
+.markdown h1 { font-size: 22px; }
+.markdown h2 { font-size: 19px; }
+.markdown h3 { font-size: 16px; }
+.markdown :is(h4, h5, h6) { font-size: 14px; }
+.markdown :is(ul, ol) { padding-inline-start: 23px; }
+.markdown li { margin-block: 4px; }
+.markdown li > :is(p, ul, ol):last-child { margin-bottom: 0; }
+.markdown li > :is(ul, ol) { margin-top: 4px; }
+.markdown li:has(> input[type="checkbox"]) { list-style: none; }
+.markdown input[type="checkbox"] { margin-inline: -19px 6px; accent-color: #5147c9; vertical-align: middle; }
+.markdown blockquote { padding-inline-start: 12px; margin-inline: 0; border-inline-start: 3px solid #d7d9e2; color: #646a7b; }
+.markdown blockquote > :last-child { margin-bottom: 0; }
+.markdown hr { margin: 18px 0; border: 0; border-top: 1px solid #e1e3eb; }
+.markdown a { color: #5147c9; text-decoration: underline; text-underline-offset: 3px; }
+.markdown a:hover { color: #342b9a; }
+.markdown code, .markdown kbd { font: .9em / 1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.markdown :not(pre) > code { padding: 2px 5px; border-radius: 5px; background: #eeeff4; overflow-wrap: anywhere; }
+.markdown kbd { padding: 1px 5px; border: 1px solid #d7d9e2; border-radius: 4px; box-shadow: 0 1px 0 #d7d9e2; }
+.markdown pre { max-width: 100%; overflow-x: auto; border: 1px solid #e3e5ec; border-radius: 9px; background: #f6f7f9; text-align: left; }
+.markdown pre > code.hljs { display: block; padding: 12px; background: transparent; font-size: 11px; white-space: pre; overflow-wrap: normal; }
+.markdown .markdown-table { max-width: 100%; overflow-x: auto; border: 1px solid #e1e3eb; border-radius: 8px; }
+.markdown table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.markdown :is(th, td) { padding: 7px 10px; border-bottom: 1px solid #e1e3eb; border-inline-end: 1px solid #e1e3eb; text-align: start; }
+.markdown :is(th, td):last-child { border-inline-end: 0; }
+.markdown tr:last-child td { border-bottom: 0; }
+.markdown th { background: #f1f2f6; font-weight: 650; }
+.markdown tr:nth-child(even) td { background: #f9f9fc; }
+.markdown [align="center"] { text-align: center; }
+.markdown [align="right"] { text-align: right; }
+.markdown [align="left"] { text-align: left; }
+.markdown img { display: block; max-width: 100%; height: auto; margin: 10px 0; border-radius: 7px; }
+.markdown summary { cursor: pointer; font-weight: 600; }
+.markdown details[open] > summary { margin-bottom: 8px; }
+.markdown dt { font-weight: 650; }
+.markdown dd { margin-inline-start: 20px; }
+.markdown section { margin-top: 20px; padding-top: 12px; border-top: 1px solid #e1e3eb; color: #646a7b; font-size: 12px; }
+.markdown section > h2 { font-size: 14px; }

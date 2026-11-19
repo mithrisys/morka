@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Morka</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="launcher/launcher.css">
+  <script src="app-setup.js" defer></script>
+  <script src="launcher/cell.js" defer></script>
+</head>
+<body class="launcher">
+  <header class="titlebar" aria-hidden="true"></header>
+  <main id="morka-home" aria-label="Morka">
+    <canvas aria-hidden="true"></canvas>
+    <button type="button" id="new-app" aria-label="Swipe right or press Enter to create an app" aria-describedby="birth-caption" aria-haspopup="dialog"></button>
+    <p class="instruction" id="birth-caption">swipe to born another <span>morka</span></p>
+    <button type="button" id="open-project" class="app-button">Open Project…</button>
+    <p id="open-project-status" role="status" hidden></p>
+  </main>
+</body>
+</html>

@@ -28,3 +28,42 @@ type AddonRequest =
   | { type: "runAgentAction"; action: unknown; input: unknown };
 type AddonResult = { value?: unknown; error?: string };
 type AppInstallResult = { path: string; openError: string } | { error: string };
+
+interface Window {
+  lab: {
+    currentApp(): Promise<string | undefined>;
+    installApp(name: string): Promise<AppInstallResult | undefined>;
+    openProject(): Promise<void>;
+    getPreview(): Promise<string | undefined>;
+    onPreview(listener: (url?: string) => void): void;
+    onPreviewUpdating(listener: (updating: boolean) => void): void;
+    runtimeState(): Promise<RuntimeState>;
+    retryRuntime(): Promise<void>;
+    onRuntimeState(listener: (state: RuntimeState) => void): void;
+    importShadow(): Promise<ImportedShadow | { error: string } | undefined>;
+    installedShadows(): Promise<InstalledShadowInfo[]>;
+    removeShadow(id: string): Promise<boolean>;
+    newShadow(name: string): Promise<boolean>;
+    openShadow(): Promise<boolean>;
+    onShadowsChanged(listener: () => void): void;
+    chatTarget(): Promise<ChatTargetInfo>;
+    listChats(): Promise<ChatIndex>;
+    newChat(): Promise<ChatSession>;
+    openChat(id: string): Promise<ChatMessage[]>;
+    openLink(url: string): Promise<void>;
+    attach(kind: "file" | "folder"): Promise<ChatAttachment[]>;
+    attachDropped(files: File[]): Promise<ChatAttachment[]>;
+    revealAttachment(id: string): Promise<void>;
+    providers(): Promise<AgentProviderInfo[]>;
+    agentSetup(): Promise<AgentSetupInfo[]>;
+    clearAgentAccess(): Promise<void>;
+    models(providerId?: string): Promise<ChatModel[]>;
+    agentOptions(providerId?: string): Promise<AgentOptions>;
+    send(id: string, message: string, model: string, shadow?: ImportedShadow, selection?: AgentSelection, attachments?: string[]): Promise<ChatTurnResult>;
+    stop(id: string): Promise<void>;
+    onChatEvent(listener: (event: ChatEvent) => void): void;
+    getAgentActivity(): Promise<boolean>;
+    onAgentActivity(listener: (active: boolean) => void): void;
+    invokeAddon(url: string, request: AddonRequest): Promise<AddonResult>;
+  };
+}

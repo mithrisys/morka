@@ -163,15 +163,23 @@ export function killProcess(child: ChildProcess, signal: NodeJS.Signals = "SIGTE
 export async function waitForProcess(child: ChildProcess, signal?: AbortSignal, timeout = 30_000) {
   await new Promise<void>((resolve, reject) => {
     let timer: ReturnType<typeof setTimeout>;
-    const abort = () => { killProcess(child, "SIGKILL"); finish(signal?.reason || new Error("The process was cancelled.")); };
-    const onError = (error: Error) => finish(error);
-    const onClose = (code: number | null, killed: NodeJS.Signals | null) => finish(code === 0 ? undefined : new Error(killed ? `Terminated by ${killed}` : `Exit code ${code}`));
-    const finish = (error?: Error) => {
+    let stopReason: unknown;
+    const stop = (reason: unknown) => {
+      if (stopReason) return;
+      stopReason = reason;
+      killProcess(child, "SIGKILL");
+    };
+    const abort = () => stop(signal?.reason || new Error("The process was cancelled."));
+    const onError = (error: Error) => finish(stopReason ?? error);
+    const onClose = (code: number | null, killed: NodeJS.Signals | null) => {
+      finish(stopReason ?? (code === 0 ? undefined : new Error(killed ? `Terminated by ${killed}` : `Exit code ${code}`)));
+    };
+    const finish = (error?: unknown) => {
       clearTimeout(timer); signal?.removeEventListener("abort", abort);
       child.off("error", onError); child.off("close", onClose);
       error ? reject(error) : resolve();
     };
-    timer = setTimeout(() => { killProcess(child, "SIGKILL"); finish(new Error("The process timed out.")); }, timeout);
+    timer = setTimeout(() => stop(new Error("The process timed out.")), timeout);
     child.once("error", onError); child.once("close", onClose);
     if (signal?.aborted) abort(); else signal?.addEventListener("abort", abort, { once: true });
   });

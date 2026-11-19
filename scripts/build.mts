@@ -31,3 +31,4 @@ if (process.platform === "darwin" && !process.argv.includes("--portable")) {
   const { bundleToolchain } = require(join(output, "project", "bundle-toolchain.js"));
   await bundleToolchain(join(output, "toolchain"));
 }
+execFileSync(process.execPath, [join(root, "scripts", "npm-kit.mts")], { cwd: root, stdio: "inherit" });

@@ -1,0 +1,9 @@
+{
+  "name": "@morka/packager",
+  "version": "0.2.1",
+  "description": "Build and package Morka apps and Shadows",
+  "bin": { "morka-pack": "bin/morka-pack.cjs" },
+  "files": ["bin"],
+  "engines": { "node": ">=24" },
+  "peerDependencies": { "@morka/runtime": "0.2.1" }
+}

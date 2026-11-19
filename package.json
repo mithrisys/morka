@@ -16,7 +16,7 @@
     "test": "npm run test:apps",
     "typecheck": "tsc --noEmit",
     "test:package:mac": "node test/package-app.test.cjs",
-    "test:preview": "electron test/live-preview-electron.test.cjs",
+    "test:preview": "node test/run-preview.cjs",
     "test:install:mac": "electron test/install-app-electron.test.cjs",
     "test:electron": "npm run test:preview && npm run test:install:mac"
   },

@@ -1,7 +1,25 @@
 {
   "name": "@morka/runtime",
   "version": "0.2.1",
-  "description": "Desktop runtime and launcher for Morka apps",
+  "author": {
+    "name": "Mehrdad Farrokhmanesh",
+    "url": "https://github.com/mithrisys"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/mithrisys/morka#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mithrisys/morka.git",
+    "directory": "packages/runtime"
+  },
+  "bugs": {
+    "url": "https://github.com/mithrisys/morka/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "description": "Electron desktop runtime and CLI for launching and installing Morka apps.",
   "productName": "Morka",
   "main": "dist/electron/main.js",
   "bin": { "morka": "bin/morka.cjs" },

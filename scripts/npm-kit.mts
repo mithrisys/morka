@@ -62,6 +62,8 @@ try {
     }
     await mkdir(directory);
     await cp(join(source, "bin"), join(directory, "bin"), { recursive: true });
+    await cp(join(root, "LICENSE"), join(directory, "LICENSE"));
+    await cp(join(source, "README.md"), join(directory, "README.md"));
     await writeFile(join(directory, "package.json"), manifest);
     if (component === "runtime") {
       await cp(dist, join(directory, "dist"), {

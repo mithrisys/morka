@@ -27,3 +27,36 @@ for component in runtime packager; do
   jq -e --arg name "$name" --arg version "${RELEASE_TAG#v}" \
     '(.[$name] // .) | .name == $name and .version == $version' "$component.json" > /dev/null
 done
+
+# Exercise the real release steps against a local GitHub CLI double.
+mkdir downloads metadata
+for suffix in macOS-arm64.dmg Windows-x64-Setup.exe Linux-x64.tar.gz; do
+  printf '%s' "$suffix" > "downloads/morka-${RELEASE_TAG#v}-$suffix"
+done
+(cd "$root" && node scripts/releases/metadata.mjs "$work/downloads" "$work/metadata/release-notes.md")
+mv downloads/SHA256SUMS.txt metadata/
+for job in draft publish-release; do
+  ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).fetch("jobs").fetch(ARGV[1]).fetch("steps").last.fetch("run")' \
+    "$root/.github/workflows/release.yml" "$job" > "$job.sh"
+done
+
+gh() {
+  test "$1" = release && test "$3" = "$RELEASE_TAG" || return 1
+  echo "$2" >> calls
+  case "$2" in
+    view)
+      test -f draft-state || return 1
+      if [[ "$*" == *"--jq .isDraft"* ]]; then cat draft-state; else jq -n --argjson draft "$(cat draft-state)" '{isDraft: $draft}'; fi ;;
+    create) test ! -f draft-state && [[ "$*" == *"--verify-tag --draft"* ]] && echo true > draft-state ;;
+    upload) test "$(cat draft-state)" = true && test "$#" -eq 8 ;;
+    edit) if [[ "$*" == *"--draft=false"* ]]; then echo false > draft-state; fi ;;
+    *) return 1 ;;
+  esac
+}
+(source draft.sh)
+(source draft.sh)
+(source publish-release.sh)
+(source draft.sh)
+test "$(cat draft-state)" = false
+test "$(grep -c '^create$' calls)" = 1
+test "$(grep -c '^upload$' calls)" = 2

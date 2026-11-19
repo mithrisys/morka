@@ -3,7 +3,7 @@ import { execFile, spawn } from "node:child_process";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import { mkdirSync, statSync } from "node:fs";
 import { readFile, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import { writeTextAtomically } from "../app-runtime/text-file";
@@ -55,9 +55,12 @@ async function openRepository(directory: string) {
 
 async function installRepository(repository: string) {
   const toolchain = await bundledToolchain(process.env.MORKA_DESKTOP_TOOLCHAIN);
+  const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === "PATH") ?? "PATH";
   await promisify(execFile)(toolchain.node, [repositoryFile(repository, "npm", "install-app.cjs"), "--open"], {
     cwd: repository, windowsHide: true, maxBuffer: 4 * 1024 * 1024,
     env: { ...process.env, npm_execpath: toolchain.npm,
+      [pathKey]: [dirname(toolchain.node), process.env[pathKey]].filter(Boolean).join(delimiter),
+      MORKA_INSTALLER_ENGINE: resolve(__dirname, "../.."),
       MORKA_INSTALL_TOOLCHAIN: toolchain.system ? "" : toolchain.root },
   });
 }

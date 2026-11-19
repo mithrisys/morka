@@ -133,6 +133,13 @@ for (const platform of ["linux", "win32"]) {
     const config = JSON.parse(await readFile(join(configDir, "morka-launch.json"), "utf8"));
     assert.equal(config.repository, repository);
     assert.equal(config.profile, profile);
+    const main = join(repository, "node_modules", "@morkaai", "runtime", "dist", "electron", "main.js");
+    await mkdir(dirname(main), { recursive: true });
+    await writeFile(main, "module.exports = true;");
+    const bootstrap = join(configDir, "main.cjs");
+    runInNewContext(await readFile(bootstrap, "utf8"), {
+      __dirname: configDir, require: createRequire(bootstrap), process: { env: {} },
+    });
     if (platform === "linux") {
       const desktop = await readFile(join(dataHome, "applications", `local.morka.project.${profile}.desktop`), "utf8");
       assert.match(desktop, /^Name=Example App$/m);

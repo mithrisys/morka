@@ -53,7 +53,21 @@ function install() {
     name && !pkg.optional && (installed[name]?.integrity !== pkg.integrity ||
       installed[name]?.version !== pkg.version || !existsSync(join(root, name, "package.json"))));
   if (needsInstall && !run([npm, "ci", "--include=dev", "--no-audit", "--no-fund"])) return;
-  run([cli, "install", ...args]);
+  const engine = process.env.MORKA_INSTALLER_ENGINE;
+  if (engine) {
+    // The desktop host registers shortcuts with its current installer. The shortcut
+    // runs the project-pinned runtime using the project's own Electron binary.
+    const electron = require("node:module").createRequire(cli)("electron");
+    const env = { ...process.env, MORKA_NPM_REPOSITORY: root, MORKA_LOCAL_NODE: process.execPath,
+      MORKA_LOCAL_NPM: npm, MORKA_INSTALL_APP: args.includes("--open") ? "open" : "1" };
+    delete env.MORKA_INSTALLER_ENGINE;
+    delete env.ELECTRON_RUN_AS_NODE;
+    const result = spawnSync(electron, [engine], { cwd: root, env, stdio: "inherit", windowsHide: true });
+    if (result.error) throw result.error;
+    process.exitCode = result.status ?? 1;
+  } else {
+    run([cli, "install", ...args]);
+  }
 }
 
 try {

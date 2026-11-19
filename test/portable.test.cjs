@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { execFile } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const { readFileSync, writeFileSync } = require("node:fs");
-const { cp, mkdir, mkdtemp, readFile, rm, writeFile } = require("node:fs/promises");
+const { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } = require("node:fs/promises");
 const { createRequire } = require("node:module");
 const { tmpdir } = require("node:os");
 const { dirname, join, win32 } = require("node:path");
@@ -45,10 +45,22 @@ test("a generated portable checkout pins engine code without the creator's Node 
   assert.match(await readFile(join(project, ".gitignore"), "utf8"), /\*\.sqlite/);
   assert.throws(() => portableAppName("CON.txt"), /Windows/);
   assert.throws(() => portableAppName("hello?"), /Windows/);
+  const template = require("../packages/project-template/package.json");
+  assert.deepEqual(manifest.dependencies, template.dependencies);
+  assert.deepEqual(manifest.devDependencies, template.devDependencies);
+  assert.deepEqual((await readdir(kit)).sort(), ["install-app.cjs", "project-lock.json"]);
+  const lock = JSON.parse(await readFile(join(project, "package-lock.json"), "utf8"));
+  for (const [name, version] of Object.entries({ ...manifest.dependencies, ...manifest.devDependencies })) {
+    const pkg = lock.packages["node_modules/" + name];
+    assert.match(version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
+    assert.equal(pkg.version, version);
+    assert.equal(new URL(pkg.resolved).origin, "https://registry.npmjs.org");
+    assert.match(pkg.integrity, /^sha512-/);
+  }
   const npm = await npmEntry(process.execPath, process.env.npm_execpath);
   const tar = createRequire(npm)("tar");
   const paths = [];
-  const archive = join(kit, "morka-runtime.tgz");
+  const archive = join(root, "dist", "archives", "morka-runtime.tgz");
   await tar.t({ file: archive, onReadEntry: entry => paths.push(entry.path) });
   assert.ok(paths.includes("package/dist/electron/main.js"));
   assert.ok(paths.includes("package/bin/morka.cjs"));

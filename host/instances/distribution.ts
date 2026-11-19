@@ -148,7 +148,7 @@ export async function buildMacBundle(
     main: "dist/electron/main.js",
   }));
   const dist = join(engine, "dist");
-  await cp(dist, join(app, "dist"), { recursive: true, filter: path => ![join(dist, "npm"), join(dist, "toolchain")].includes(path) });
+  await cp(dist, join(app, "dist"), { recursive: true, filter: path => ![join(dist, "npm"), join(dist, "archives"), join(dist, "toolchain")].includes(path) });
   await cp(toolchain, join(app, "dist", "toolchain"), { recursive: true });
   await copyDependencies(engine, app, Object.keys(metadata.dependencies ?? {}).filter(name => name !== "electron"));
   await cp(kit, join(resources, bundledKit), { recursive: true });

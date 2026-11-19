@@ -40,7 +40,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: npm-packages
-          path: dist/npm/*.tgz
+          path: dist/archives/*.tgz
           if-no-files-found: error
 
   publish:
@@ -74,6 +74,13 @@ jobs:
               200) echo "Verifying the existing $name@$version before continuing." ;;
               *) echo "Registry lookup for $name@$version returned HTTP $status."; exit 1 ;;
             esac
-            actual=$(npm view "$name@$version" dist.integrity --prefer-online --registry=https://registry.npmjs.org/)
+            # npm can accept a publish before the public registry serves its metadata.
+            for attempt in {1..30}; do
+              if actual=$(npm view "$name@$version" dist.integrity --fetch-retries=0 --prefer-online --registry=https://registry.npmjs.org/); then
+                break
+              fi
+              if [ "$attempt" -eq 30 ]; then exit 1; fi
+              sleep 20
+            done
             test "$actual" = "$expected" || { echo "Published integrity differs for $name@$version."; exit 1; }
           done

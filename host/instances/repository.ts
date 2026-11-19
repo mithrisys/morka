@@ -168,8 +168,8 @@ for a self-contained build.
 If the project uses AI, open **AI setup** and sign in with your own supported
 local CLI. Your account, chats and app data are stored outside the repository.
 
-Commit the app source, lockfiles and .morka/ to share this repo. The portable
-Morka archives in .morka/npm/ pin the engine code for all three platforms.
+Commit the app source, lockfiles and .morka/ to share this repo. The root
+package.json pins the published Morka runtime and packager versions.
 `;
   await writeRepositoryScaffold(directory, name, kit, scripts, `# ${spec.name}
 

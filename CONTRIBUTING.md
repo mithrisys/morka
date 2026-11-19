@@ -13,6 +13,30 @@ The root package is the private development entry point. The build packs `@morka
 
 See the [architecture overview](docs/architecture.md) before changing the project runtime, IPC, or generated packages. [AGENTS.md](AGENTS.md) maps common changes to their focused checks.
 
+## Branches and commits
+
+Start each independent change on a short-lived branch from the latest available `main`. Check `git status --short --branch` before editing. Continue related work on its existing branch. Preserve other contributors' uncommitted changes. For example, start a new documentation change with `git switch -c docs/development-workflow main` from a clean checkout.
+
+Use `<type>/<short-kebab-case-description>` for branches. An existing issue number may prefix the description, as in `fix/42-preview-state-after-reload`. Use one of `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, or `revert` for branch and commit types. The branch describes the overall change. Individual commits describe each step.
+
+Write Conventional Commit subjects in English using `<type>(<optional-scope>): <imperative summary>`. Omit the parentheses when there is no scope. Use a recognizable project area such as `runtime`, `desktop`, `agents`, or `packager`. Mark a breaking contract change with `!` before the colon and explain the impact and upgrade steps in a `BREAKING CHANGE:` footer.
+
+```text
+feat(runtime): add timeouts for app actions
+fix(desktop): preserve preview state after reload
+test(packager): verify offline startup of packaged apps
+```
+
+Keep each commit buildable, focused, and independently understandable. Include the reason in the body when the diff cannot explain it. Fold fixups into the relevant commits before review.
+
+## Test-driven development
+
+For a feature, describe an observable result and write a failing test at the lowest level that can prove it. For a bug, reproduce it through the affected entry point first. Run the test and confirm the failure identifies the missing behavior. Implement the change, rerun the test, then refactor while it stays green. Commit the regression test with its fix.
+
+Use a unit test for isolated validation or transformations and an integration test for contracts between components. Extend end-to-end coverage when a change affects an essential user journey. For example, test preview state across a reload in Electron, and test offline startup against a packaged app. When changing draft publication, cover both the working release and the editable draft after a failed update. Use temporary workspaces, synthetic data, and local services so tests run independently of accounts and live providers.
+
+For documentation-only changes, check links, commands, and examples. For a change to generated app repositories, build the npm kit and exercise the generated app.
+
 ## Checks
 
 | Command | Purpose |
@@ -27,4 +51,25 @@ Run individual suites with `node --test test/<name>.test.cjs` after building. Ru
 
 ## Pull requests
 
-Keep each change focused. Include the motivation, user-visible effects, and the checks you ran. When a change affects new app repositories, build the npm kit and verify the generated app path. Keep sample data synthetic and omit credentials, private app data, and generated bundles from the diff.
+Submit one independently reviewable change per pull request. Describe the motivation, observable behavior, and checks run. Identify any checks that still need a platform runner. Keep credentials, private app data, and generated bundles out of the diff.
+
+Integrate through pull requests using rebase and merge to preserve the reviewed commits. On GitHub, protect `main` by requiring a pull request and the workflow, portable build, and macOS checks to pass. A second reviewer is optional for a sole maintainer.
+
+## Versions and releases
+
+The desktop host, `@morka/runtime`, and `@morka/packager` share a Semantic Version. The CLI, app manifest, and runtime interfaces consumed by apps are public contracts. Use the highest applicable increment for the release.
+
+| Change | Increment |
+| --- | --- |
+| Compatible fix | Patch |
+| Compatible feature | Minor |
+| Breaking public contract before 1.0 | Minor, with upgrade notes |
+| Breaking public contract from 1.0 onward | Major, with upgrade notes |
+
+Documentation, CI, and internal refactoring alone do not require a release. Collect changes in a dedicated release PR. Update the three manifests, the packager's exact runtime peer dependency, and the root lockfile together. Add a dated entry to [CHANGELOG.md](CHANGELOG.md) describing user-visible changes and any upgrade steps. After the release PR lands, tag its commit as `v<version>`, for example `v0.3.0`.
+
+## Maintaining agent guidance
+
+Keep repository development instructions in [AGENTS.md](AGENTS.md) and this guide. Claude and Copilot use the same instructions. Keep app-author guidance in the [built-in skills](host/skills/). If a contract or workflow changes, update the affected instructions and verify their example against the current implementation in the same PR.
+
+When an agent repeatedly makes the same mistake, find the instruction or example that led to it, make a targeted correction, and exercise the corrected path. Keep domain-specific integrations in the app that owns them.

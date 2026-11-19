@@ -4,7 +4,8 @@ Morka creates, runs, and edits independent Node apps. Keep host capabilities, th
 
 ## Start here
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) covers local setup, build commands, and test requirements.
+- Before editing, run `git status --short --branch`. Create a focused branch from the latest available `main`, or continue on the branch for the same task. Preserve unrelated work.
+- Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branch names, Conventional Commits, test-driven development, pull requests, and versioning.
 - [Architecture](docs/architecture.md) explains the boundaries between the desktop host, the app runtime, and agent workspaces.
 
 | Area | Entry points |
@@ -24,6 +25,8 @@ Morka creates, runs, and edits independent Node apps. Keep host capabilities, th
 
 ## Verify changes
 
+For a behavior change, first run a test that fails for the expected reason. Exercise the real user path when a change crosses the desktop, runtime, or packaging boundary. Update the relevant built-in skill in the same change when its instructions or examples would lead an app author astray.
+
 Run `npm run typecheck` for TypeScript changes. On macOS, `npm test` builds the host and runs the main suite.
 
 | Change | Focused checks after building |
@@ -34,3 +37,5 @@ Run `npm run typecheck` for TypeScript changes. On macOS, `npm test` builds the 
 | Generated checkouts or CLI entry points | `node --test test/portable.test.cjs` |
 | Preview state or desktop installation | `npm run test:electron` on macOS |
 | macOS packaging or the bundled toolchain | `npm run test:package:mac` on macOS |
+
+Before handing off, review the diff against the base, run the relevant checks, and report the behavior verified and any checks still pending. Keep each step in a focused, passing commit.

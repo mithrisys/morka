@@ -3,6 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "engines": { "node": ">=24" },
-  "dependencies": { "@morkaai/runtime": "0.2.1" },
-  "devDependencies": { "@morkaai/packager": "0.2.1" }
+  "dependencies": { "@morkaai/runtime": "0.2.2" },
+  "devDependencies": { "@morkaai/packager": "0.2.2" }
 }

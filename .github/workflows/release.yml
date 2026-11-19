@@ -3,6 +3,15 @@ name: Publish npm packages
 on:
   push:
     tags: ['v[0-9]*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: read
@@ -13,6 +22,7 @@ concurrency:
 
 jobs:
   prepare:
+    if: github.event_name == 'push' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,6 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v6
@@ -31,7 +42,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           git merge-base --is-ancestor HEAD origin/main
-          test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
+          test "$RELEASE_TAG" = "v$(node -p "require('./package.json').version")"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")"
           result=$(gh run list --workflow ci.yml --branch main --event push --commit "$(git rev-parse HEAD)" --limit 1 --json conclusion --jq '.[0].conclusion')
           test "$result" = success || { echo "Release the tagged commit after its main CI run passes."; exit 1; }
       - run: npm run check:versions
@@ -62,9 +74,9 @@ jobs:
         run: |
           set -euo pipefail
           for component in runtime packager; do
-            file="packages/morka-${component}.tgz"
+            file="./packages/morka-${component}.tgz"
             name="@morkaai/$component"
-            version="${GITHUB_REF_NAME#v}"
+            version="${RELEASE_TAG#v}"
             tar -xOf "$file" package/package.json | jq -e --arg name "$name" --arg version "$version" '.name == $name and .version == $version' > /dev/null
             expected="sha512-$(openssl dgst -sha512 -binary "$file" | openssl base64 -A)"
             url="https://registry.npmjs.org/@morkaai%2f$component/$version"

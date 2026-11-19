@@ -54,6 +54,9 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:workflow
       - run: npm test
+      - name: Dry-run the npm release
+        if: runner.os == 'Linux'
+        run: bash test/release-workflow.sh
       - name: Test live preview in a virtual display
         if: runner.os == 'Linux'
         run: |

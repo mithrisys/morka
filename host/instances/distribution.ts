@@ -117,6 +117,26 @@ async function keepEnglishLocalizations(directory: string) {
     .map(entry => rm(join(directory, entry.name), { recursive: true })));
 }
 
+export async function writeDesktopResources(engine: string, resources: string, name: string, kit: string, toolchain?: string) {
+  const metadata = JSON.parse(await readFile(join(engine, "package.json"), "utf8"));
+  const app = join(resources, "app");
+  await mkdir(app);
+  await writeFile(join(app, "package.json"), jsonFile({
+    name: "morka",
+    productName: name,
+    version: metadata.version,
+    main: "dist/electron/main.js",
+  }));
+  const dist = join(engine, "dist");
+  await cp(dist, join(app, "dist"), { recursive: true, filter: path => ![join(dist, "npm"), join(dist, "archives"), join(dist, "toolchain")].includes(path) });
+  const destination = join(app, "dist", "toolchain");
+  if (toolchain) await cp(toolchain, destination, { recursive: true });
+  else await bundleToolchain(destination);
+  await copyDependencies(engine, app, Object.keys(metadata.dependencies ?? {}).filter(name => name !== "electron"));
+  await cp(kit, join(resources, bundledKit), { recursive: true });
+  await copyFile(join(engine, "LICENSE"), join(app, "LICENSE"));
+}
+
 export async function buildMacBundle(
   engine: string, bundle: string, kit: string,
   release?: { spec: AppRelease; repository: string; packagesHome: string },
@@ -133,6 +153,7 @@ export async function buildMacBundle(
   const contents = join(bundle, "Contents");
   const resources = join(contents, "Resources");
   const app = join(resources, "app");
+  const dist = join(engine, "dist");
   const name = spec?.name ?? "Morka";
 
   await run("/usr/bin/ditto", [electron, bundle]);
@@ -140,18 +161,7 @@ export async function buildMacBundle(
     keepEnglishLocalizations(resources),
     keepEnglishLocalizations(join(contents, "Frameworks", "Electron Framework.framework", "Resources")),
   ]);
-  await mkdir(app);
-  await writeFile(join(app, "package.json"), jsonFile({
-    name: "morka",
-    productName: name,
-    version: metadata.version,
-    main: "dist/electron/main.js",
-  }));
-  const dist = join(engine, "dist");
-  await cp(dist, join(app, "dist"), { recursive: true, filter: path => ![join(dist, "npm"), join(dist, "archives"), join(dist, "toolchain")].includes(path) });
-  await cp(toolchain, join(app, "dist", "toolchain"), { recursive: true });
-  await copyDependencies(engine, app, Object.keys(metadata.dependencies ?? {}).filter(name => name !== "electron"));
-  await cp(kit, join(resources, bundledKit), { recursive: true });
+  await writeDesktopResources(engine, resources, name, kit, toolchain);
   await rm(join(resources, "default_app.asar"), { force: true });
   await rename(join(contents, "MacOS", "Electron"), join(contents, "MacOS", "Morka"));
   await copyFile(join(dist, "branding", "Morka.icns"), join(resources, appIcon));

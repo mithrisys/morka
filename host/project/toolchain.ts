@@ -57,7 +57,7 @@ export async function bundledToolchain(root?: string): Promise<Toolchain> {
     throw new Error("The bundled Node runtime does not match this computer's platform and architecture.");
   }
   root = await realpath(root);
-  return { root, node: join(root, "bin", "node"), npm: join(root, "npm", "bin", "npm-cli.js"), headers: root,
+  return { root, node: join(root, "bin", process.platform === "win32" ? "node.exe" : "node"), npm: join(root, "npm", "bin", "npm-cli.js"), headers: process.platform === "win32" ? undefined : root,
     identity: JSON.stringify(metadata), platform: metadata.platform, arch: metadata.arch };
 }
 

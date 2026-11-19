@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, rename, rm, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { desktopAssets } from "./metadata.mjs";
 
 const require = createRequire(import.meta.url);
@@ -26,7 +26,11 @@ try {
   } else {
     const windows = process.platform === "win32";
     const app = join(image, "morka");
-    await cp(dirname(require("electron")), app, { recursive: true, verbatimSymlinks: true });
+    const electron = dirname(require("electron"));
+    await cp(electron, app, {
+      recursive: true, verbatimSymlinks: true,
+      filter: path => dirname(path) !== join(electron, "locales") || /^en(?:-[A-Z]+)?\.pak$/.test(basename(path)),
+    });
     const resources = join(app, "resources");
     await rm(join(resources, "default_app.asar"));
     await rename(join(app, windows ? "electron.exe" : "electron"), join(app, windows ? "Morka.exe" : "morka"));
@@ -41,7 +45,10 @@ try {
           appId: "local.morka.desktop", productName: "Morka",
           directories: { output: stage },
           win: { icon: resolve("host/branding/morka-icon.png") },
-          nsis: { artifactName: asset, oneClick: false, perMachine: false, runAfterFinish: false },
+          nsis: {
+            artifactName: asset, oneClick: false, perMachine: false, allowElevation: false,
+            multiLanguageInstaller: false, runAfterFinish: false,
+          },
         },
       });
     } else {

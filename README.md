@@ -2,6 +2,8 @@
 
 Morka is an Electron app for building and running projects with Codex, Claude Code, and ACP agents. The `host/` directory contains the Morka host. The Chat icon opens the chat panel. The brain icon at the top of the window turns green while an agent is running.
 
+For development setup and checks, see [Contributing](CONTRIBUTING.md).
+
 ## Create and open projects
 
 To launch Morka from source on macOS, Windows, or Linux, install Node.js 24 or later and npm. Run these commands from the Morka repository root.

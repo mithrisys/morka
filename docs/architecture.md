@@ -1,0 +1,22 @@
+# Morka architecture
+
+Morka has a desktop host and an independent Node app for each project. The project repository contains an outer npm launcher and an editable `app/` directory. Agent drafts are scoped to `app/`. The checkout's chat history, account permissions, and app data live in its private profile.
+
+## Desktop host and app
+
+[`host/electron/main.ts`](../host/electron/main.ts) owns the launcher, windows, IPC, and agent connections. [The renderer](../host/renderer/) manages chat and embeds the running app. The app serves its UI and backend over a local HTTP origin. [The runtime proxy](../host/project/app-proxy.ts) keeps that origin stable as the server behind it changes.
+
+An app opts into AI actions in `morka.project.json` and loads the host bridge from `/__morka/bridge.js`. The main process verifies the preview origin before forwarding actions. [The action runner](../host/agent-actions/runner.ts) validates input, runs a registered skill in a temporary provider session, and validates the structured result. The app backend owns external requests and supplies the data needed by the action.
+
+## Edits and releases
+
+1. [The chat session](../host/agents/sessions.ts) prepares a draft and gives the selected provider the applicable project instructions and file inventory.
+2. [The package manager](../host/project/packages.ts) resolves dependencies and builds in staging. It produces an immutable artifact keyed by source, lockfile, toolchain, and build configuration.
+3. [The managed runtime](../host/project/managed-runtime.ts) starts the candidate, checks health, and switches the stable proxy. [The live preview](../host/project/live-preview.ts) checks the page and restores UI state. Morka publishes the source after validation.
+4. On failure, Morka preserves the working release and the agent's draft. App databases and files stay in the private data directory throughout the update.
+
+Shadows package reusable project instructions, skills, and optional assets. Their installation metadata lets Morka reverse source edits it can safely attribute to the installation. [Shadow source and removal](../host/project/shadow-effects.ts)
+
+## Packaging
+
+The root npm package builds the host. [The npm kit](../scripts/npm-kit.mts) packs the runtime and packager CLIs and generates the lockfile used by new checkouts. The archives keep generated repositories tied to their engine version. [macOS distribution](../host/instances/distribution.ts) can also package an app with its prepared release and matching Node and npm toolchain.

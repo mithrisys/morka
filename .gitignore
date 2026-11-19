@@ -8,6 +8,8 @@ coverage/
 .env.*
 !.env.example
 .npmrc
+/.claude/settings.local.json
+/CLAUDE.local.md
 .morka-backups/
 .morka-data/
 *.sqlite

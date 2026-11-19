@@ -4,8 +4,10 @@
   "description": "A desktop host for building and running standalone Node apps with AI agents.",
   "private": true,
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "build": "node scripts/build.mts",
+    "typecheck": "tsc --noEmit",
+    "pretest": "npm run build",
+    "test": "node --test test/npm-apps.test.cjs"
   },
   "engines": {
     "node": ">=24"

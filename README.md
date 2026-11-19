@@ -164,3 +164,7 @@ During code updates, Morka keeps the current path, query string, URL fragment, n
 Expose custom JavaScript state such as filters, active tabs, and form steps through `window.morkaLifecycle`. Set `ready` to a promise that resolves after initial loading. Implement `beforeUpdate()` to finish pending work, `capture()` to return JSON-serializable state, and `restore(state)` to restore it. Use this contract for state the DOM alone cannot restore. The app authoring skill also requires agents to preserve it. Keep state keys and control IDs stable when editing the app.
 
 Node services receive a persistent data path through `process.env.MORKA_DATA_DIR`, outside the source tree and agent draft. Source snapshots and published edits exclude SQLite and other database files, their WAL, journal, and shm files, and the `.morka-data/` directory. Store business data in persistent storage and preserve it when changing the UI.
+
+## License
+
+Morka is distributed under the [MIT License](LICENSE). Bundled third-party components retain their own licenses.

@@ -1,7 +1,25 @@
 {
   "name": "@morka/packager",
   "version": "0.2.1",
-  "description": "Build and package Morka apps and Shadows",
+  "author": {
+    "name": "Mehrdad Farrokhmanesh",
+    "url": "https://github.com/mithrisys"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/mithrisys/morka#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mithrisys/morka.git",
+    "directory": "packages/packager"
+  },
+  "bugs": {
+    "url": "https://github.com/mithrisys/morka/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "description": "CLI for creating Morka app launchers, packaging macOS apps, and validating and packaging Shadows.",
   "bin": { "morka-pack": "bin/morka-pack.cjs" },
   "files": ["bin"],
   "engines": { "node": ">=24" },

@@ -41,6 +41,9 @@ For documentation-only changes, check links, commands, and examples. For a chang
 
 | Command | Purpose |
 | --- | --- |
+| `npm run check:history` | Check the local topic branch name and the subjects of every commit it introduces relative to `main`. |
+| `npm run check:versions` | Verify that package versions, the runtime peer pin, and the root lockfile agree. |
+| `npm run test:workflow` | Exercise the workflow checks against temporary Git repositories and package manifests. |
 | `npm run typecheck` | Check the TypeScript host and renderer. |
 | `npm test` | Build and run the main suite. Run the full suite on macOS. |
 | `npm run test:apps` | Rerun the main suite against the current build. |

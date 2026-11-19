@@ -27,7 +27,7 @@ npm start
 npm run build
 ```
 
-`npm ci` installs the versioned Morka tools from portable archives in `.morka/npm/` and downloads Electron for the current platform. Keep the archives and lockfile in Git with the source. `npm run build` writes a `.command`, `.cmd`, or `.sh` script to `dist/`. The script opens the same checkout and requires a local installation of Node.js and npm. Run projects you trust.
+`npm ci` installs the exact versions of `@morkaai/runtime` and `@morkaai/packager` from npm. Electron downloads its binary for the current platform. Commit the lockfile and `.morka/` with the source. `npm run build` writes a `.command`, `.cmd`, or `.sh` script to `dist/`. The script opens the same checkout and requires a local installation of Node.js and npm. Run projects you trust.
 
 On macOS, run `npm run package:mac` from an app repository to create a self-contained local build under `dist/`.
 

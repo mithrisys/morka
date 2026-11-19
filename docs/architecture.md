@@ -19,4 +19,4 @@ Shadows package reusable project instructions, skills, and optional assets. Thei
 
 ## Packaging
 
-The root npm package builds the host. [The npm kit](../scripts/npm-kit.mts) packs the runtime and packager CLIs and generates the lockfile used by new checkouts. The archives keep generated repositories tied to their engine version. [macOS distribution](../host/instances/distribution.ts) can also package an app with its prepared release and matching Node and npm toolchain.
+The root npm package builds the host. [The npm kit](../scripts/npm-kit.mts) packs the runtime and packager CLIs for distribution. New checkouts use the registry lockfile from [the project template](../packages/project-template/package.json) to install published versions. [macOS distribution](../host/instances/distribution.ts) can also package an app with its prepared release and matching Node and npm toolchain.

@@ -16,7 +16,7 @@ if (typeof version !== "string" || !version.trim()) {
 for (const [field, actual] of [
   ["packages/runtime/package.json version", runtime.version],
   ["packages/packager/package.json version", packager.version],
-  ["packages/packager/package.json peerDependencies.@morka/runtime", packager.peerDependencies?.["@morka/runtime"]],
+  ["packages/packager/package.json peerDependencies.@morkaai/runtime", packager.peerDependencies?.["@morkaai/runtime"]],
   ["package-lock.json version", lock.version],
   ['package-lock.json packages[""].version', lock.packages?.[""]?.version],
 ]) {

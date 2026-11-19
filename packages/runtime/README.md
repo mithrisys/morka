@@ -1,4 +1,4 @@
-# @morka/runtime
+# @morkaai/runtime
 
 The desktop runtime for Morka apps. It runs the app's Node.js backend and opens its desktop window in Electron.
 

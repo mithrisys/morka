@@ -63,11 +63,11 @@ jobs:
           set -euo pipefail
           for component in runtime packager; do
             file="packages/morka-${component}.tgz"
-            name="@morka/$component"
+            name="@morkaai/$component"
             version="${GITHUB_REF_NAME#v}"
             tar -xOf "$file" package/package.json | jq -e --arg name "$name" --arg version "$version" '.name == $name and .version == $version' > /dev/null
             expected="sha512-$(openssl dgst -sha512 -binary "$file" | openssl base64 -A)"
-            url="https://registry.npmjs.org/@morka%2f$component/$version"
+            url="https://registry.npmjs.org/@morkaai%2f$component/$version"
             status=$(curl --silent --show-error --output "$RUNNER_TEMP/manifest.json" --write-out '%{http_code}' "$url")
             case "$status" in
               404) npm publish "$file" --access public --registry=https://registry.npmjs.org/ ;;

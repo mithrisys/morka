@@ -15,7 +15,7 @@ function check(t, change = () => {}) {
   const files = {
     "package.json": { version },
     "packages/runtime/package.json": { version },
-    "packages/packager/package.json": { version, peerDependencies: { "@morka/runtime": version } },
+    "packages/packager/package.json": { version, peerDependencies: { "@morkaai/runtime": version } },
     "package-lock.json": { version, packages: { "": { version } } },
   };
   change(files);
@@ -35,7 +35,7 @@ test("accepts a coordinated release", (t) => {
 for (const [label, change, diagnostic] of [
   ["runtime version", (f) => { f["packages/runtime/package.json"].version = "0.3.0"; }, "packages/runtime/package.json"],
   ["packager version", (f) => { f["packages/packager/package.json"].version = "0.3.0"; }, "packages/packager/package.json"],
-  ["runtime peer range", (f) => { f["packages/packager/package.json"].peerDependencies["@morka/runtime"] = "^0.2.1"; }, "@morka/runtime"],
+  ["runtime peer range", (f) => { f["packages/packager/package.json"].peerDependencies["@morkaai/runtime"] = "^0.2.1"; }, "@morkaai/runtime"],
   ["outer lockfile version", (f) => { f["package-lock.json"].version = "0.1.0"; }, "package-lock.json"],
   ["missing locked root version", (f) => { delete f["package-lock.json"].packages[""].version; }, "package-lock.json"],
   ["missing root version", (f) => { delete f["package.json"].version; }, "package.json"],

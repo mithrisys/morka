@@ -1,6 +1,6 @@
-# @morka/packager
+# @morkaai/packager
 
-The packaging CLI for Morka apps and Shadows. Generated projects use this package as a development dependency alongside the matching version of `@morka/runtime`.
+The packaging CLI for Morka apps and Shadows. Generated projects use this package as a development dependency alongside the matching version of `@morkaai/runtime`.
 
 From an app repository, run `npm run build` to create a launcher for the checkout. On macOS, run `npm run package:mac` to build a self-contained application bundle under `dist/`.
 

@@ -11,9 +11,9 @@ async function main() {
   const repository = resolve(args[0] || process.cwd());
   const local = createRequire(join(repository, "package.json"));
   if (command === "local-build") {
-    const { repositoryProject } = local("@morka/runtime/dist/instances/repository.js");
-    const { snapshot } = local("@morka/runtime/dist/project/files.js");
-    const { compileProject } = local("@morka/runtime/dist/project/project.js");
+    const { repositoryProject } = local("@morkaai/runtime/dist/instances/repository.js");
+    const { snapshot } = local("@morkaai/runtime/dist/project/files.js");
+    const { compileProject } = local("@morkaai/runtime/dist/project/project.js");
     await compileProject(await snapshot(await repositoryProject(repository)));
     const windows = process.platform === "win32";
     const extension = windows ? "cmd" : process.platform === "darwin" ? "command" : "sh";
@@ -27,7 +27,7 @@ async function main() {
     return;
   }
   if (command !== "package:mac") {
-    const { readShadowWorkspace, packShadowRepository } = local("@morka/runtime/dist/instances/shadow-repository.js");
+    const { readShadowWorkspace, packShadowRepository } = local("@morkaai/runtime/dist/instances/shadow-repository.js");
     if (command === "shadow-pack") console.log(await packShadowRepository(repository));
     else {
       const { name } = await readShadowWorkspace(repository);
@@ -35,8 +35,8 @@ async function main() {
     }
     return;
   }
-  const runtime = dirname(local.resolve("@morka/runtime/package.json"));
-  const { buildMacRelease } = local("@morka/runtime/dist/instances/distribution.js");
+  const runtime = dirname(local.resolve("@morkaai/runtime/package.json"));
+  const { buildMacRelease } = local("@morkaai/runtime/dist/instances/distribution.js");
   console.log(await buildMacRelease(runtime, repository));
 }
 

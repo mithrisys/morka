@@ -21,8 +21,8 @@ const name = "morka-project";
 const packages: Record<string, Record<string, unknown>> = {
   "": {
     name, version: "0.1.0", engines,
-    dependencies: { "@morka/runtime": "file:.morka/npm/morka-runtime.tgz" },
-    devDependencies: { "@morka/packager": "file:.morka/npm/morka-packager.tgz" },
+    dependencies: { "@morkaai/runtime": "file:.morka/npm/morka-runtime.tgz" },
+    devDependencies: { "@morkaai/packager": "file:.morka/npm/morka-packager.tgz" },
   },
 };
 
@@ -54,10 +54,10 @@ try {
     const source = join(root, "packages", component);
     const manifest = await readFile(join(source, "package.json"), "utf8");
     const packageInfo = JSON.parse(manifest);
-    if (packageInfo.name !== `@morka/${component}` || packageInfo.version !== version ||
+    if (packageInfo.name !== `@morkaai/${component}` || packageInfo.version !== version ||
         !isDeepStrictEqual(packageInfo.engines, engines) ||
         (component === "runtime" && !isDeepStrictEqual(packageInfo.dependencies, runtimeDependencies)) ||
-        (component === "packager" && packageInfo.peerDependencies?.["@morka/runtime"] !== version)) {
+        (component === "packager" && packageInfo.peerDependencies?.["@morkaai/runtime"] !== version)) {
       throw new Error(`Keep packages/${component}/package.json in sync with the root package.`);
     }
     await mkdir(directory);
@@ -75,7 +75,7 @@ try {
       { cwd: directory, encoding: "utf8" }));
     const archive = `morka-${component}.tgz`;
     await rename(join(kit, packed.filename), join(kit, archive));
-    packages[`node_modules/@morka/${component}`] = {
+    packages[`node_modules/@morkaai/${component}`] = {
       name: packageInfo.name,
       version: packageInfo.version,
       engines: packageInfo.engines,

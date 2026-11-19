@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -32,7 +33,14 @@ try {
     : process.platform === "win32" ? process.env.APPDATA : work;
   profile = join(appsDirectory(appData), "instances", repositoryProfileId(spec, repo));
   const origin = join(profile, "runtime", spec.id, "origin.json");
-  child = spawn(executable, [], { cwd: work, env, stdio: "inherit" });
+  // Observe the shell and its live preview in the packaged Chromium instance.
+  const probe = createServer();
+  await new Promise((done, fail) => probe.once("error", fail).listen(0, "127.0.0.1", done));
+  const debugPort = probe.address().port;
+  await new Promise(done => probe.close(done));
+  child = spawn(executable, ["--remote-debugging-address=127.0.0.1", `--remote-debugging-port=${debugPort}`], {
+    cwd: work, env, stdio: "inherit",
+  });
   let error;
   child.on("error", reason => { error = reason; });
   const deadline = Date.now() + 120_000;
@@ -41,11 +49,15 @@ try {
     assert.equal(child.exitCode, null, "The packaged desktop exited before the starter was ready");
     if (existsSync(origin)) {
       const { port } = JSON.parse(await readFile(origin, "utf8"));
+      const targets = await fetch(`http://127.0.0.1:${debugPort}/json/list`).then(reply => reply.json()).catch(() => []);
+      const rendered = targets.some(target => target.type === "page" && target.url.endsWith("/renderer/index.html"))
+        && targets.some(target => target.url === `http://127.0.0.1:${port}/`);
+      if (!rendered) { await delay(300); continue; }
       const health = await fetch(`http://127.0.0.1:${port}/health`).catch(() => null);
       if (health?.ok && await health.text() === "ready") {
         const page = await fetch(`http://127.0.0.1:${port}/`);
         assert.ok(page.ok && (await page.text()).includes("<html"));
-        console.log("PASS: the installed desktop served a fresh starter using the bundled Node and npm.");
+        console.log("PASS: the installed desktop rendered the project window and served a fresh starter using the bundled Node and npm.");
         break;
       }
     }

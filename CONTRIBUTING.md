@@ -70,7 +70,9 @@ The desktop host, `@morka/runtime`, and `@morka/packager` share a Semantic Versi
 | Breaking public contract before 1.0 | Minor, with upgrade notes |
 | Breaking public contract from 1.0 onward | Major, with upgrade notes |
 
-Documentation, CI, and internal refactoring alone do not require a release. Collect changes in a dedicated release PR. Update the three manifests, the packager's exact runtime peer dependency, and the root lockfile together. Add a dated entry to [CHANGELOG.md](CHANGELOG.md) describing user-visible changes and any upgrade steps. After the release PR lands, tag its commit as `v<version>`, for example `v0.3.0`.
+Documentation, CI, and internal refactoring alone do not require a release. Collect changes in a dedicated release PR. Update the three manifests, the packager's exact runtime peer dependency, and the root lockfile together. Add a dated entry to [CHANGELOG.md](CHANGELOG.md) describing user-visible changes and any upgrade steps. After the release PR lands and its push CI run on `main` passes, tag that commit as `v<version>`, for example `v0.3.0`, and push the tag. The [release workflow](.github/workflows/release.yml) builds the portable archives and publishes the runtime followed by the packager. It checks the registry integrity of both packages, including any version already published by an earlier attempt.
+
+Configure npm Trusted Publishing for both packages with the GitHub repository `mithrisys/morka`, workflow filename `release.yml`, and direct publish permission. Only the publish job requests an OIDC token. The first publication of version `0.2.1` uses an authenticated npm session.
 
 ## Maintaining agent guidance
 

@@ -1,0 +1,79 @@
+name: Publish npm packages
+
+on:
+  push:
+    tags: ['v[0-9]*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Verify the release tag and its CI run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
+          result=$(gh run list --workflow ci.yml --branch main --event push --commit "$(git rev-parse HEAD)" --limit 1 --json conclusion --jq '.[0].conclusion')
+          test "$result" = success || { echo "Release the tagged commit after its main CI run passes."; exit 1; }
+      - run: npm run check:versions
+      - run: npm ci
+      - run: npm run build -- --portable
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages
+          path: dist/npm/*.tgz
+          if-no-files-found: error
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-packages
+          path: packages
+      - name: Publish the runtime and packager
+        run: |
+          set -euo pipefail
+          for component in runtime packager; do
+            file="packages/morka-${component}.tgz"
+            name="@morka/$component"
+            version="${GITHUB_REF_NAME#v}"
+            tar -xOf "$file" package/package.json | jq -e --arg name "$name" --arg version "$version" '.name == $name and .version == $version' > /dev/null
+            expected="sha512-$(openssl dgst -sha512 -binary "$file" | openssl base64 -A)"
+            url="https://registry.npmjs.org/@morka%2f$component/$version"
+            status=$(curl --silent --show-error --output "$RUNNER_TEMP/manifest.json" --write-out '%{http_code}' "$url")
+            case "$status" in
+              404) npm publish "$file" --access public --registry=https://registry.npmjs.org/ ;;
+              200) echo "Verifying the existing $name@$version before continuing." ;;
+              *) echo "Registry lookup for $name@$version returned HTTP $status."; exit 1 ;;
+            esac
+            actual=$(npm view "$name@$version" dist.integrity --prefer-online --registry=https://registry.npmjs.org/)
+            test "$actual" = "$expected" || { echo "Published integrity differs for $name@$version."; exit 1; }
+          done

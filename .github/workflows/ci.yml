@@ -20,7 +20,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-      - run: npm run test:workflow
       - run: npm run check:versions
       - name: Check the topic branch and its commits
         if: github.event_name == 'pull_request'
@@ -30,12 +29,19 @@ jobs:
           TOPIC_BRANCH: ${{ github.head_ref }}
         run: npm run check:history -- "$BASE_SHA" "$HEAD_SHA" "$TOPIC_BRANCH"
 
-  portable-build:
-    name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+  test:
+    name: Test on ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - platform: Linux
+            runner: ubuntu-latest
+          - platform: Windows
+            runner: windows-latest
+          - platform: macOS
+            runner: macos-latest
     steps:
       - uses: actions/checkout@v6
         with:
@@ -46,20 +52,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npm run build -- --portable
-
-  macos-tests:
-    name: Test on macOS
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+      - run: npm run test:workflow
       - run: npm test
-      - run: npm run test:package:mac
-      - run: npm run test:electron
+      - name: Test live preview in a virtual display
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:preview
+      - name: Test live preview
+        if: runner.os != 'Linux'
+        run: npm run test:preview
+      - name: Test macOS packaging and installation
+        if: runner.os == 'macOS'
+        run: |
+          npm run test:package:mac
+          npm run test:install:mac

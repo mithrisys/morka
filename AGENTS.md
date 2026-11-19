@@ -27,7 +27,7 @@ Morka creates, runs, and edits independent Node apps. Keep host capabilities, th
 
 For a behavior change, first run a test that fails for the expected reason. Exercise the real user path when a change crosses the desktop, runtime, or packaging boundary. Update the relevant built-in skill in the same change when its instructions or examples would lead an app author astray.
 
-Run `npm run typecheck` for TypeScript changes. On macOS, `npm test` builds the host and runs the main suite.
+Run `npm run typecheck` for TypeScript changes. `npm test` builds the host and runs the app suite on Linux, Windows, and macOS.
 
 | Change | Focused checks after building |
 | --- | --- |
@@ -35,7 +35,8 @@ Run `npm run typecheck` for TypeScript changes. On macOS, `npm test` builds the 
 | App releases, package isolation, or action validation | `node --test test/npm-apps.test.cjs` |
 | Window startup, retry, or active preview origin | `node --test test/runtime-lifecycle.test.cjs` |
 | Generated checkouts or CLI entry points | `node --test test/portable.test.cjs` |
-| Preview state or desktop installation | `npm run test:electron` on macOS |
+| Preview state | `npm run test:preview` (use `xvfb-run -a` on headless Linux) |
+| macOS desktop installation | `npm run test:install:mac` |
 | macOS packaging or the bundled toolchain | `npm run test:package:mac` on macOS |
 
 Before handing off, review the diff against the base, run `npm run check:history` on the committed branch, run the relevant checks above, and report the behavior verified and any checks still pending. Keep each step in a focused, passing commit.

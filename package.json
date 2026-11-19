@@ -1,0 +1,17 @@
+{
+  "name": "morka",
+  "version": "0.1.0",
+  "description": "A desktop host for building and running standalone Node apps with AI agents.",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.5",
+    "typescript": "6.0.3"
+  }
+}

@@ -45,18 +45,19 @@ For documentation-only changes, check links, commands, and examples. For a chang
 | `npm run check:versions` | Verify that package versions, the runtime peer pin, and the root lockfile agree. |
 | `npm run test:workflow` | Exercise the workflow checks against temporary Git repositories and package manifests. |
 | `npm run typecheck` | Check the TypeScript host and renderer. |
-| `npm test` | Build and run the main suite. Run the full suite on macOS. |
+| `npm test` | Build and run the app suite on Linux, Windows, or macOS. |
 | `npm run test:apps` | Rerun the main suite against the current build. |
 | `npm run test:package:mac` | Verify signed macOS packaging and offline startup after a full build. |
-| `npm run test:electron` | Exercise the macOS installer and live preview in Electron after a full build. |
+| `npm run test:preview` | Exercise live preview in Electron on all three platforms. On a headless Linux runner use `xvfb-run -a npm run test:preview`. |
+| `npm run test:install:mac` | Exercise the signed macOS installer in Electron after a full build. |
 
-Run individual suites with `node --test test/<name>.test.cjs` after building. Runtime tests use temporary workspaces and loopback servers. macOS integration checks require access to the system sandbox and Xcode Command Line Tools.
+Run individual suites with `node --test test/<name>.test.cjs` after building. Runtime tests use temporary workspaces and loopback servers. The package lifecycle sandbox and bundled native-addon tests require macOS and Xcode Command Line Tools. On Linux and Windows the shared runtime tests use the local Node.js and npm installation.
 
 ## Pull requests
 
 Submit one independently reviewable change per pull request. Describe the motivation, observable behavior, and checks run. Identify any checks that still need a platform runner. Keep credentials, private app data, and generated bundles out of the diff.
 
-Integrate through pull requests using rebase and merge to preserve the reviewed commits. On GitHub, protect `main` by requiring a pull request and the workflow, portable build, and macOS checks to pass. A second reviewer is optional for a sole maintainer.
+Integrate through pull requests using rebase and merge to preserve the reviewed commits. On GitHub, protect `main` by requiring a pull request and the `Development workflow`, `Test on Linux`, `Test on Windows`, and `Test on macOS` checks to pass. A second reviewer is optional for a sole maintainer.
 
 ## Versions and releases
 

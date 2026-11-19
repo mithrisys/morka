@@ -69,10 +69,10 @@ try {
       });
     }
     const [packed] = JSON.parse(execFileSync(process.execPath, [npm,
-      "pack", "--json", "--ignore-scripts", "--cache", join(stage, "cache"), "--pack-destination", stage],
+      "pack", "--json", "--ignore-scripts", "--cache", join(stage, "cache"), "--pack-destination", kit],
       { cwd: directory, encoding: "utf8" }));
     const archive = `morka-${component}.tgz`;
-    await rename(join(stage, packed.filename), join(kit, archive));
+    await rename(join(kit, packed.filename), join(kit, archive));
     packages[`node_modules/@morka/${component}`] = {
       name: packageInfo.name,
       version: packageInfo.version,

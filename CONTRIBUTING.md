@@ -72,6 +72,8 @@ The desktop host, `@morkaai/runtime`, and `@morkaai/packager` share a Semantic V
 
 Documentation, CI, and internal refactoring alone do not require a release. Collect changes in a dedicated release PR. Update the three manifests, the packager's exact runtime peer dependency, and the root lockfile together. Add a dated entry to [CHANGELOG.md](CHANGELOG.md) describing user-visible changes and any upgrade steps. After the release PR lands and its push CI run on `main` passes, tag that commit as `v<version>`, for example `v0.3.0`, and push the tag. The [release workflow](.github/workflows/release.yml) builds the portable archives and publishes the runtime followed by the packager. It checks the registry integrity of both packages, including any version already published by an earlier attempt.
 
+To retry an existing release after a workflow fix, run **Publish npm packages** from `main` in GitHub Actions and enter the existing tag. The workflow builds that tag's commit and checks its successful push CI run on `main` before publishing.
+
 Configure npm Trusted Publishing for both packages with the GitHub repository `mithrisys/morka`, workflow filename `release.yml`, and direct publish permission. Only the publish job requests an OIDC token. After both packages are available, update the two exact versions in `packages/project-template/package.json` and run `npm install --package-lock-only --ignore-scripts` in that directory. Commit its lockfile to promote the release to new projects. The first publication of version `0.2.1` uses an authenticated npm session.
 
 ## Maintaining agent guidance

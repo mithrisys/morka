@@ -13,6 +13,7 @@ const { ManagedRuntime } = require('../dist/project/managed-runtime.js');
 const { readManifest, compileProject } = require('../dist/project/project.js');
 const { bundledToolchain } = require('../dist/project/toolchain.js');
 const { ChatSessions } = require('../dist/agents/sessions.js');
+const { AgentRunner } = require('../dist/agent-actions/runner.js');
 const { snapshot, digest } = require('../dist/project/files.js');
 
 const bytes = value => Buffer.from(typeof value === 'string' ? value : JSON.stringify(value));
@@ -394,4 +395,31 @@ test('CSS served from a mounted public directory updates without restarting its 
     await runtime.update(third,spec,callbacks);
     assert.equal(await(await fetch(runtime.url+'assets/styles.css')).text(),'h1{color:green}');
   }finally{await runtime.stop();}
+}));
+
+test('managed Node apps pass their own data to a validated agent action',()=>fixture(async home=>{
+  const source=appSource();
+  source.set('morka.project.json',bytes({version:1,runtime:{type:'node'},agentActions:{definitions:'agents.json',skills:'skills'}}));
+  const schema={type:'object',properties:{value:{type:'string'}},required:['value'],additionalProperties:false};
+  const action={id:'echo',skill:'echo',session:'ephemeral',instructions:'Return the input.',inputSchema:schema,outputSchema:schema};
+  source.set('agents.json',bytes([action]));
+  source.set('skills/echo/SKILL.md',bytes('---\nname: echo\ndescription: Return the input.\n---\nReturn the input as JSON.'));
+  const project=await compileProject(source);
+  assert.equal(project.actions.get('echo').chooseProvider,true);
+  const input={value:'Data from the app'};
+  const runner=new AgentRunner(home,{get(provider){
+    assert.equal(provider,'codex');
+    return {info:{name:'Codex'},connection:{async runAction(turn){
+      assert.equal(turn.text,`Return the input.\n\nInputs (JSON):\n${JSON.stringify(input)}`);
+      assert.deepEqual(turn.schema,schema);
+      assert.equal(Object.hasOwn(turn,'tools'),false);
+      assert.match(await readFile(join(turn.skillRoot,turn.skill,'SKILL.md'),'utf8'),/Return the input as JSON/);
+      return JSON.stringify(input);
+    }}};
+  }});
+  assert.deepEqual(await runner.run(project,'echo',input),input);
+  await assert.rejects(runner.run(project,'echo',{}),/input does not match its schema/);
+
+  source.set('agents.json',bytes([{...action,extra:true}]));
+  await assert.rejects(compileProject(source),/Unknown field "extra"/);
 }));

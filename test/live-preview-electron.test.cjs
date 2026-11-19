@@ -1,16 +1,15 @@
 const assert = require('node:assert/strict');
 const { app, BrowserWindow } = require('electron');
 const { createServer } = require('node:http');
-const { mkdtemp, writeFile, readFile, rm } = require('node:fs/promises');
+const { mkdir, writeFile, readFile } = require('node:fs/promises');
 const { join } = require('node:path');
-const { tmpdir } = require('node:os');
 const { LivePreview } = require('../dist/project/live-preview.js');
 const { snapshot, applyFiles } = require('../dist/project/files.js');
 app.on('window-all-closed', () => {});
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 let css = 'h1 {color: blue}';
 let brokenPreview = false;
-let server, window, root;
+let server, window;
 let hostBridge;
 const errors = [];
 const html = `<!doctype html><link rel="stylesheet" href="/assets/styles.css"><style>body{height:3000px}#panel{height:100px;overflow:auto}#inside{height:1000px}</style>
@@ -28,8 +27,10 @@ async function until(check) {
   while (!(await check())) {assert.ok(Date.now()<deadline,'Timed out waiting for preview state'); await delay(20);}
 }
 (async()=>{
-  root=await mkdtemp(join(tmpdir(),'morka-state-test-'));
-  app.setPath('userData',join(root,'profile'));
+  const workspace = process.env.MORKA_PREVIEW_TEST_DIR;
+  const root = join(workspace, 'files');
+  await mkdir(root);
+  app.setPath('userData', join(workspace, 'profile'));
   await app.whenReady();
   hostBridge=await readFile(join(__dirname,'../dist/app-runtime/bridge.js'),'utf8');
   server=createServer(async(req,res)=>{
@@ -113,6 +114,5 @@ async function until(check) {
 })().catch(error=>{console.error(error);process.exitCode=1}).finally(async()=>{
   if(window&&!window.isDestroyed())window.destroy();
   if(server)await new Promise(resolve=>server.close(resolve));
-  if(root)await rm(root,{recursive:true,force:true});
   app.exit(process.exitCode||0);
 });

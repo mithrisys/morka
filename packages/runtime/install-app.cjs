@@ -39,7 +39,7 @@ function install() {
   if (Number(process.versions.node.split(".")[0]) < 24) throw new Error("Install Node.js 24 or newer.");
   const npm = process.env.npm_execpath;
   if (!npm || !isAbsolute(npm)) throw new Error("Run this installer with npm run install:app.");
-  const runtime = "node_modules/@morka/runtime";
+  const runtime = "node_modules/@morkaai/runtime";
   const cli = join(root, runtime, "bin", "morka.cjs");
   const expected = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")).packages;
   const installedLock = join(root, "node_modules", ".package-lock.json");

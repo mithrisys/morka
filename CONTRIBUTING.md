@@ -9,7 +9,7 @@ npm start
 
 The launcher builds and runs the desktop host from source. You can build without opening Electron using `npm run build -- --portable`. The build writes the host and local npm kit to `dist/`.
 
-The root package is the private development entry point. The build packs `@morka/runtime` and `@morka/packager` from their manifests in `packages/` into `dist/npm/`. Keep both package versions and the runtime dependency pins in sync with the root package.
+The root package is the private development entry point. The build packs `@morkaai/runtime` and `@morkaai/packager` from their manifests in `packages/` into `dist/npm/`. Keep both package versions and the runtime dependency pins in sync with the root package.
 
 See the [architecture overview](docs/architecture.md) before changing the project runtime, IPC, or generated packages. [AGENTS.md](AGENTS.md) maps common changes to their focused checks.
 
@@ -61,7 +61,7 @@ Integrate through pull requests using rebase and merge to preserve the reviewed 
 
 ## Versions and releases
 
-The desktop host, `@morka/runtime`, and `@morka/packager` share a Semantic Version. The CLI, app manifest, and runtime interfaces consumed by apps are public contracts. Use the highest applicable increment for the release.
+The desktop host, `@morkaai/runtime`, and `@morkaai/packager` share a Semantic Version. The CLI, app manifest, and runtime interfaces consumed by apps are public contracts. Use the highest applicable increment for the release.
 
 | Change | Increment |
 | --- | --- |

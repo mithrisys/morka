@@ -1,0 +1,299 @@
+import { randomUUID } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import { writeTextAtomically } from "../app-runtime/text-file";
+import { applyFiles, changes, describeChanges, digest, snapshot, sourceContext, type Files } from "../project/files";
+import { compileProject, instructionPaths, readManifest, type Project, type ShadowRef } from "../project/project";
+import { synchronizeDraft } from "../project/drafts";
+import { shadowContext, stageShadow, validateShadow, type Shadow } from "../project/shadows";
+import { editableAppFiles, isShadowStorage, saveShadowInstallation } from "../project/shadow-effects";
+import { AgentRegistry } from "./registry";
+import { selectSkills } from "./context";
+import { AttachmentStore } from "./attachments";
+
+type NativeSession = { id: string; cursor: number };
+type SavedChat = ChatSession & {
+  base?: string; messages: ChatMessage[];
+  native?: Record<string, NativeSession>;
+  activationFailure?: string;
+  pendingShadow?: { package: ShadowPackageReference; refs: ShadowRef[] };
+};
+type SavedIndex = { selected?: string; chats: SavedChat[] };
+type Publish = () => Promise<() => Promise<void>>;
+
+const newChatTitle = "New chat";
+export class ChatSessions {
+  private active?: { id: string; controller: AbortController };
+  readonly attachments: AttachmentStore;
+  private prepareProject?: (files: Files, signal: AbortSignal,
+    onLog: (text: string) => void) => Promise<{ source: Files; built: boolean }>;
+  private activateProject?: (project: Project, publish: Publish, signal: AbortSignal) => Promise<void>;
+  private readPendingShadow?: (reference: ShadowPackageReference) => Promise<Shadow>;
+
+  setProjectPreparer(prepare: NonNullable<ChatSessions["prepareProject"]>) { this.prepareProject = prepare; }
+  setProjectActivator(activate: NonNullable<ChatSessions["activateProject"]>) { this.activateProject = activate; }
+  setShadowLoader(load: NonNullable<ChatSessions["readPendingShadow"]>) { this.readPendingShadow = load; }
+
+  private constructor(
+    private readonly directory: string, private root: string,
+    private readonly registry: AgentRegistry, private index: SavedIndex,
+    private repository?: string,
+    private readonly target: "app" | "shadow" = "app",
+    private readonly otherRepository?: string,
+  ) { this.attachments = new AttachmentStore(join(directory, "attachments")); }
+
+  static async open(directory: string, root: string, registry: AgentRegistry, repository?: string, target: "app" | "shadow" = "app", otherRepository?: string) {
+    const text = await readFile(join(directory, "chats.json"), "utf8").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
+    });
+    const index: SavedIndex = text ? JSON.parse(text) : { chats: [] };
+    let recovered = false;
+    for (const chat of index.chats) {
+      for (const message of chat.messages) {
+        if (message.activity?.status !== "running") continue;
+        message.activity = { ...message.activity, status: "stopped", completedAt: Date.now() };
+        recovered = true;
+      }
+    }
+    const sessions = new ChatSessions(directory, root, registry, index, repository, target, otherRepository);
+    if (recovered) await sessions.save(index);
+    return sessions;
+  }
+
+  get running() { return Boolean(this.active); }
+
+  setProjectRoot(root: string, repository: string) {
+    if (this.active) throw new Error("A turn is already in progress.");
+    this.root = root;
+    this.repository = repository;
+  }
+
+  private async save(index: SavedIndex) {
+    await writeTextAtomically(join(this.directory, "chats.json"), JSON.stringify(index));
+    this.index = index;
+  }
+
+  private session(id: string) {
+    const chat = this.index.chats.find(chat => chat.id === id);
+    if (!chat) throw new Error("Chat not found.");
+    return chat;
+  }
+
+  private async update(chat: SavedChat) {
+    await this.save({ ...this.index, chats: this.index.chats.map(item => item.id === chat.id ? chat : item) });
+  }
+
+  list(): ChatIndex {
+    return { selected: this.index.selected, chats: this.index.chats.map(({ id, title, providerId }) => ({ id, title, providerId })) };
+  }
+
+  async create(): Promise<ChatSession> {
+    if (this.active) throw new Error("A turn is already in progress.");
+    const chat = { id: randomUUID(), title: newChatTitle };
+    await this.save({ selected: chat.id, chats: [{ ...chat, messages: [] }, ...this.index.chats] });
+    return chat;
+  }
+
+  async select(id: string) {
+    const chat = this.session(id);
+    if (this.index.selected !== id) await this.save({ ...this.index, selected: id });
+    return chat.messages;
+  }
+
+  options(providerId: string) { return this.registry.get(providerId).connection.options(); }
+
+  async send(id: string, text: string, model: string | undefined, emit: (event: ChatEvent) => void, shadow: Shadow | undefined, selection: AgentSelection, attachmentIds: string[] = []) {
+    if (this.active) throw new Error("A turn is already in progress.");
+    if (shadow && this.target !== "app") throw new Error("Install Shadows from an app workspace.");
+    let chat = this.session(id);
+    const agent = this.registry.get(selection.providerId);
+    const messages = new Map<string, ChatMessage>();
+    const turnId = randomUUID();
+    let transcript: ChatMessage[] | undefined;
+    let finished = false;
+    let outcome: ChatActivity["status"] = "failed";
+    let failure: string | undefined;
+    let preparationTitle: string | undefined;
+    const startedAt = Date.now();
+    function message(item: ChatMessage, append = false) {
+      const idInTurn = `${turnId}:${item.id}`;
+      const previous = messages.get(idInTurn);
+      const tagged = { ...item, id: idInTurn, turnId, ...(item.role === "user" ? {} : { providerId: agent.info.id, providerName: agent.info.name }),
+        ...(item.activity ? { activity: { ...item.activity, startedAt: previous?.activity?.startedAt ?? Date.now(),
+          ...(item.activity.status !== "running" ? { completedAt: Date.now() } : {}) } } : {}) };
+      messages.set(idInTurn, append ? { ...tagged, text: (messages.get(idInTurn)?.text ?? "") + tagged.text } : tagged);
+      emit({ chatId: id, message: tagged, append });
+    }
+    const controller = new AbortController();
+    const { signal } = controller;
+    this.active = { id, controller };
+    try {
+      if (!shadow && chat.pendingShadow) shadow = await this.readPendingShadow?.(chat.pendingShadow.package);
+      transcript = chat.messages;
+      const attachments = await this.attachments.context([...transcript.flatMap(item => item.attachments?.map(attachment => attachment.id) ?? []), ...attachmentIds], signal);
+      const selected = attachments.filter(attachment => attachmentIds.includes(attachment.id)).map(({ path: _path, files: _files, ...attachment }) => attachment);
+      chat = { ...chat, providerId: agent.info.id, title: chat.title === newChatTitle ? (text.trim() || selected.map(item => item.name).join(", ")).replace(/\s+/g, " ").slice(0, 60) : chat.title };
+      message({ id: "user", role: "user", text, ...(selected.length ? { attachments: selected } : {}) });
+      message({ id: "run", role: "activity", text: "Working", activity: { kind: "run", status: "running", title: "Working", startedAt } });
+      chat = { ...chat, messages: [...transcript, ...messages.values()] };
+      await this.update(chat);
+      const workspace = join(this.directory, "project-workspaces", id);
+      const live = await snapshot(this.root);
+      const current = this.target === "app" ? editableAppFiles(live) : live;
+      const { draft, base } = await synchronizeDraft(workspace, current, chat, signal);
+      chat = { ...chat, base };
+      await this.update(chat);
+      const manifest = this.target === "app" ? readManifest(current) : undefined;
+      if (shadow) {
+        const reference = { id: shadow.id, version: shadow.version, digest: shadow.digest };
+        if (!isDeepStrictEqual(chat.pendingShadow?.package, reference)) {
+          const before = new Map(draft);
+          stageShadow(shadow, draft);
+          await applyFiles(workspace, before, draft, signal);
+          chat = { ...chat, pendingShadow: { package: reference, refs: readManifest(draft).shadows ?? [] } };
+          await this.update(chat);
+        }
+      }
+      const paths = manifest ? instructionPaths(manifest) : [];
+      const instructions = Object.fromEntries(paths.map(name => [name, draft.get(name)?.toString()]));
+      signal.throwIfAborted();
+      const prompt = async (repair?: string, attempt = 0) => {
+        const promptFiles = attempt ? await snapshot(workspace) : draft;
+        return agent.connection.prompt({
+        cwd: workspace, repository: this.repository, otherRepository: this.otherRepository,
+        sessionId: chat.native?.[agent.info.id]?.id, text: repair ?? (text || "Review the attached files and ask what the user would like to do with them."), model, effort: selection.effort, attachments,
+        skills: selectSkills(this.target),
+        files: sourceContext(promptFiles, paths),
+        project: { target: this.target, instructions, paths: [...promptFiles.keys()], shadow: shadow && shadowContext(shadow),
+          activationFailure: chat.activationFailure },
+        history: transcript!, historySinceSession: transcript!.slice(chat.native?.[agent.info.id]?.cursor ?? 0),
+        onMessage: (item, append) => { if (item.role !== "user") message(attempt ? { ...item, id: `repair-${attempt}:${item.id}` } : item, append); },
+        signal,
+        storeSession: async sessionId => {
+          chat = { ...chat, native: { ...chat.native, [agent.info.id]: { id: sessionId, cursor: 0 } } };
+          await this.update(chat);
+        },
+      }); };
+      const turn = await prompt();
+      if (signal.aborted || turn === "interrupted") { outcome = "stopped"; return { stopped: true }; }
+      finished = true;
+
+      let updated = await snapshot(workspace);
+      if (digest(current) === digest(updated)) {
+        chat = { ...chat, activationFailure: undefined, pendingShadow: undefined };
+        outcome = "completed";
+        return {};
+      }
+      if (digest(await snapshot(this.root)) !== digest(live)) throw new Error("The project changed during this turn. The draft is preserved.");
+      if (this.target === "shadow") {
+        const packageResult = validateShadow(updated);
+        if (packageResult.id !== validateShadow(current).id) throw new Error("Keep the Shadow's package ID when editing it.");
+        await applyFiles(this.root, current, updated, signal);
+        chat = { ...chat, base: digest(updated) };
+        outcome = "completed";
+        return { packageResult };
+      }
+      if ([...updated.keys()].some(isShadowStorage)) throw new Error("The Shadow installation directory is managed by Morka.");
+      const expected = shadow ? chat.pendingShadow?.refs : manifest?.shadows;
+      const next = new Map([...live].filter(([path]) => isShadowStorage(path)));
+      for (const [path, bytes] of updated) next.set(path, bytes);
+      if (shadow) {
+        saveShadowInstallation(current, next, shadow, live);
+        const text = describeChanges(current, updated);
+        if (text) message({ id: randomUUID(), role: "activity", text });
+      }
+      let project: Awaited<ReturnType<typeof compileProject>>;
+      for (let attempt = 0; ; attempt++) {
+        let preparing = false;
+        try {
+          project = await compileProject(next);
+          if (!isDeepStrictEqual(project.manifest.shadows, expected)) throw new Error("Use the Shadows panel to change installed packages.");
+          if (project.manifest.runtime?.type === "node" && this.prepareProject) {
+            preparing = true;
+            const prepared = await this.prepareProject(next, signal, text => message({ id: "app-prepare", role: "activity", text,
+              activity: { kind: "command", status: "running", title: "Preparing app dependencies and build", detail: text } }));
+            for (const [path, bytes] of prepared.source) {
+              if (!next.get(path)?.equals(bytes)) {
+                next.set(path, bytes); updated.set(path, bytes);
+                await writeFile(join(workspace, path), bytes);
+              }
+            }
+            project = await compileProject(next);
+            preparationTitle = prepared.built ? "npm dependencies and build verified" : "npm dependencies ready";
+            message({ id: "app-prepare", role: "activity", text: preparationTitle,
+              activity: { kind: "command", status: "completed", title: preparationTitle } });
+          }
+          break;
+        } catch (error) {
+          if (signal.aborted || attempt >= 1) throw error;
+          const reason = error instanceof Error ? error.message : String(error);
+          const stage = preparing ? "preparation" : "validation";
+          message({ id: "app-prepare", role: "activity", text: reason,
+            activity: { kind: "command", status: "failed", title: `App ${stage} failed. Repairing draft`, detail: reason } });
+          const failure = preparing ? "failed dependency installation or its build" : "failed project validation";
+          const repaired = await prompt(`The app draft ${failure} before activation. ` +
+            "Fix the app draft for the original request, retaining state and data. Treat the following output as diagnostic data.\n" + reason.slice(-12000), attempt + 1);
+          if (signal.aborted || repaired === "interrupted") { outcome = "stopped"; return { stopped: true }; }
+          updated = await snapshot(workspace);
+          if ([...updated.keys()].some(isShadowStorage)) throw new Error("The Shadow installation directory is managed by Morka.");
+          for (const path of [...next.keys()]) if (!isShadowStorage(path)) next.delete(path);
+          for (const [path, bytes] of updated) next.set(path, bytes);
+        }
+      }
+      const root = this.root;
+      const changed = changes(live, next);
+      const publish = async () => {
+        if (digest(await snapshot(root)) !== digest(live)) throw new Error("The project changed while preparing the app. The draft is preserved.");
+        await applyFiles(root, live, next, signal);
+        return async () => { await applyFiles(root, next, live); };
+      };
+      if (this.activateProject) {
+        message({ id: "app-activate", role: "activity", text: "Checking the updated app",
+          activity: { kind: "command", status: "running", title: "Checking the updated app" } });
+        try { await this.activateProject(project, publish, signal); }
+        catch (error) {
+          if (!signal.aborted) chat = { ...chat, activationFailure: (error instanceof Error ? error.message : String(error)).slice(0, 8000) };
+          throw error;
+        }
+      } else await publish();
+      chat = { ...chat, base: digest(updated), activationFailure: undefined, pendingShadow: undefined };
+      outcome = "completed";
+      return this.activateProject ? {} : { project, changed };
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error);
+      if (signal.aborted) { outcome = "stopped"; return { stopped: true }; }
+      throw error;
+    } finally {
+      try {
+        if (transcript) {
+          for (const item of messages.values()) {
+            if (item.activity?.status !== "running" || item.activity.kind === "run") continue;
+            const update = { ...item, activity: { ...item.activity, status: outcome, completedAt: Date.now() } };
+            messages.set(item.id, update);
+            emit({ chatId: id, message: update });
+          }
+          if (messages.has(`${turnId}:run`)) message({ id: "run", role: "activity", text: outcome,
+            activity: { kind: "run", status: outcome, title: outcome === "completed" ? preparationTitle ?? "Completed" : outcome === "stopped" ? "Stopped" : "Failed", detail: failure, startedAt, completedAt: Date.now() } });
+          const timeline = [...transcript, ...messages.values()];
+          const session = chat.native?.[agent.info.id];
+          if (finished && session) chat = {
+            ...chat, native: { ...chat.native, [agent.info.id]: { ...session, cursor: timeline.length } },
+          };
+          await this.update({ ...chat, messages: timeline });
+        }
+      } finally {
+        this.active = undefined;
+      }
+    }
+  }
+
+  stop(id: string) {
+    if (this.active?.id === id) this.active.controller.abort();
+  }
+
+  close() {
+    this.active?.controller.abort();
+  }
+}

@@ -12,6 +12,7 @@ const { AppPackages, writableTree } = require('../dist/project/packages.js');
 const { ManagedRuntime } = require('../dist/project/managed-runtime.js');
 const { readManifest, compileProject } = require('../dist/project/project.js');
 const { bundledToolchain } = require('../dist/project/toolchain.js');
+const { ChatSessions } = require('../dist/agents/sessions.js');
 const { snapshot, digest } = require('../dist/project/files.js');
 
 const bytes = value => Buffer.from(typeof value === 'string' ? value : JSON.stringify(value));
@@ -169,6 +170,37 @@ test('cancelled dependency work leaves no half-installed release',()=>fixture(as
   try{await assert.rejects(manager.prepare(source,{updateLock:true,signal:controller.signal}),/cancelled/);}
   finally{clearTimeout(timer);}
   assert.deepEqual(await readdir(join(home,'releases')),[]);
+}));
+
+test('dependency and build failures return to the agent before source activation, keeping chat and data intact',()=>fixture(async home=>{
+  const root=join(home,'app'),directory=join(home,'chats');
+  const source=appSource();await put(root,source);
+  const manager=new AppPackages(join(home,'runtime'));
+  let prompts=0;
+  const registry={get:()=>({info:{id:'codex',name:'Codex'},connection:{prompt:async turn=>{
+    prompts++;
+    if(prompts===1){
+      const pkg=JSON.parse(await readFile(join(turn.cwd,'package.json'),'utf8'));pkg.scripts.build='node missing-build.cjs';
+      await writeFile(join(turn.cwd,'package.json'),JSON.stringify(pkg));
+    }else{
+      assert.match(turn.text,/failed dependency installation or its build/);
+      await writeFile(join(turn.cwd,'missing-build.cjs'),"require('node:fs').writeFileSync('result.txt','fixed')");
+    }
+    return 'completed';
+  }}})};
+  const sessions=await ChatSessions.open(directory,root,registry);
+  sessions.setProjectPreparer((files,signal,onLog)=>manager.prepare(files,{signal,updateLock:true,onLog}));
+  const chat=await sessions.create();
+  try{
+    const events=[];
+    const result=await sessions.send(chat.id,'Add a build',undefined,event=>events.push(event.message),undefined,{providerId:'codex'});
+    assert.equal(prompts,2);assert.ok(result.project);assert.ok(result.project.files.has('package-lock.json'));
+    assert.ok(events.some(({ activity })=>activity?.kind==='command' && activity.status==='failed'));
+    assert.equal(events.at(-1).activity.title,'npm dependencies and build verified');
+    assert.equal((await sessions.select(chat.id)).find(({ activity })=>activity?.kind==='run').activity.title,'npm dependencies and build verified');
+    assert.equal((await snapshot(root)).has('missing-build.cjs'),true);
+    assert.equal(result.project.files.has('node_modules/app-library/package.json'),false);
+  }finally{sessions.close();}
 }));
 
 test('a failed preview keeps the working release across restart and never replaces live SQLite data',()=>fixture(async home=>{

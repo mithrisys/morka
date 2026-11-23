@@ -41,6 +41,8 @@ button that turns the current note into a short list of action items.
 
 Your agent works in a draft while the app stays open. Morka builds the change, checks that the app starts and its page loads, then publishes the source to your checkout. You can keep chatting to refine the result.
 
+New apps include accessible form and layout defaults and fast Node test scripts. Type `/review` in app chat to run app checks and exercise the main workflow at two desktop sizes. Direct stylesheet edits keep the current page and input in place. See [workflow review](docs/preview-scenarios.md).
+
 ## AI in your apps
 
 An **agent action** lets a button or another app control call Codex or Claude Code through Morka. The app sends the action the data it needs, such as the current meeting note, and gets back validated JSON it can use in the UI. Morka asks for permission before the app first uses a local account, and the account stays with the host.

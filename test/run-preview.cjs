@@ -6,7 +6,7 @@ const electron = require("electron");
 
 const workspace = mkdtempSync(join(tmpdir(), "morka-preview-"));
 try {
-  for (const suite of ["launcher-electron.test.cjs", "live-preview-electron.test.cjs"]) {
+  for (const suite of ["launcher-electron.test.cjs", "live-preview-electron.test.cjs", "scenario-review-electron.test.cjs"]) {
     execFileSync(electron, [join(__dirname, suite)], {
       env: { ...process.env, MORKA_PREVIEW_TEST_DIR: workspace },
       stdio: "inherit",

@@ -236,9 +236,9 @@ export class CodexClient {
     this.active?.finish(error);
   }
 
-  async start(cwd: string) {
+  async start(cwd: string, ephemeral = false) {
     await this.verifyPolicy(cwd);
-    return this.startThread(cwd, false);
+    return this.startThread(cwd, ephemeral);
   }
 
   private async startThread(cwd: string, ephemeral: boolean) {
@@ -382,10 +382,12 @@ export class CodexClient {
 
 
 export class CodexConnection implements AgentConnection {
+  readonly supportsImages = true;
+  reviewConnection() { return new CodexConnection(this.skills, true); }
   private editing?: CodexClient;
   private runtime?: CodexClient;
 
-  constructor(private readonly skills: string) {}
+  constructor(private readonly skills: string, private readonly ephemeral = false) {}
 
   private connect() {
     if (!this.editing || this.editing.disconnected) this.editing = new CodexClient(this.skills);
@@ -396,7 +398,7 @@ export class CodexConnection implements AgentConnection {
 
   async prompt(turn: AgentPrompt) {
     const client = this.connect();
-    const id = turn.sessionId ?? await client.start(turn.cwd);
+    const id = turn.sessionId ?? await client.start(turn.cwd, this.ephemeral);
     const result = await client.send(id, turn, turn.sessionId ? undefined : () => turn.storeSession(id));
     if (result.status === "interrupted" || turn.signal.aborted) return "interrupted";
     if (result.status !== "completed") throw new Error(result.error?.message ?? "The Codex turn did not complete.");

@@ -8,7 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { writeTextAtomically } from "../../app-runtime/text-file";
 import { checkedPath, info, projectPath } from "../../project/files";
 import type { AgentConnection, AgentPrompt } from "../contracts";
-import { buildPrompt, effortChoice } from "../context";
+import { buildPrompt, guidePaths, effortChoice } from "../context";
 import { spawnAcp, stopAgent, type AcpProfile } from "../acp-sandbox";
 import { activityStatus, toolActivity } from "../activity";
 
@@ -165,7 +165,8 @@ class AcpProcess {
           const requested = resolve(params.path);
           const attachment = this.turn.attachments?.flatMap(item => item.files).find(file => file.path === requested);
           if (attachment && message.method === "fs/write_text_file") throw new AcpError(-32602, "Attachments are read-only.");
-          const path = attachment?.path ?? await checkedPath(this.turn.cwd, projectPath(relative(this.turn.cwd, requested)));
+          const guide = this.turn.guides?.includes(requested) && message.method === "fs/read_text_file" ? requested : undefined;
+          const path = guide ?? attachment?.path ?? await checkedPath(this.turn.cwd, projectPath(relative(this.turn.cwd, requested)));
           if (message.method === "fs/write_text_file") {
             if (typeof params.text !== "string" || Buffer.byteLength(params.text) > 4 * 1024 * 1024) throw new AcpError(-32602, "Invalid file content");
             await writeTextAtomically(path, params.text);
@@ -232,6 +233,8 @@ class AcpProcess {
 }
 
 export class AcpConnection implements AgentConnection {
+  supportsImages = false;
+  reviewConnection() { return new AcpConnection(this.profile, this.skills, this.state, this.projectRoot); }
   private process?: AcpProcess;
   private discovery?: Promise<void>;
   private discoveryProcess?: AcpProcess;
@@ -250,6 +253,7 @@ export class AcpConnection implements AgentConnection {
       clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: false },
     }, this.setupTimeout);
     if (hello.protocolVersion !== 1) throw new Error(`Unsupported ACP version: ${hello.protocolVersion}.`);
+    this.supportsImages = hello.agentCapabilities?.promptCapabilities?.image === true;
     return hello;
   }
 
@@ -332,8 +336,9 @@ export class AcpConnection implements AgentConnection {
     }
     turn.signal.throwIfAborted();
     if (this.process) throw new Error("The ACP agent is already responding.");
-    const child = await spawnAcp(this.profile, turn.cwd, this.state, this.projectRoot, "chat", turn.attachments?.map(attachment => attachment.path));
-    const process = new AcpProcess(child, turn, configOptions => { this.setup = { ...this.setup, configOptions }; });
+    const guides = turn.project.target === "app" ? guidePaths(this.skills) : [];
+    const child = await spawnAcp(this.profile, turn.cwd, this.state, this.projectRoot, "chat", [...guides, ...(turn.attachments?.map(attachment => attachment.path) ?? [])]);
+    const process = new AcpProcess(child, { ...turn, guides }, configOptions => { this.setup = { ...this.setup, configOptions }; });
     this.process = process;
     const setupTimeout = this.profile.id === "hermes" ? 120_000 : 25_000;
     const abortSetup = () => process.abort();

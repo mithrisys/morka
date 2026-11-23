@@ -165,6 +165,8 @@ You can also open this folder in Morka. To create a local launch script, run
 in \`dist/\` and opens this checkout. On macOS, run \`npm run package:mac\`
 for a self-contained build.
 
+Use the app package's test script for its fast behavior checks. Run \`/review\` in Morka chat to exercise its preview scenario with synthetic data.
+
 If the project uses AI, open **AI setup** and sign in with your own supported
 local CLI. Your account, chats and app data are stored outside the repository.
 

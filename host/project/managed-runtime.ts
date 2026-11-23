@@ -80,12 +80,21 @@ export class ManagedRuntime {
 
   async prepare(source: Files, options: PackageOptions = {}) {
     const active = this.active;
-    if (active?.alive && this.currentSource && !active.artifact.built && await this.packages.sameConfiguration(active.artifact)) {
+    if (!options.recheck && active?.alive && this.currentSource && !active.artifact.built && await this.packages.sameConfiguration(active.artifact)) {
       const changed = [...new Set([...source.keys(), ...this.currentSource.keys()])].filter(path => {
         const before = this.currentSource!.get(path), after = source.get(path);
         return !before || !after || !before.equals(after);
       });
       if (changed.length && changed.every(path => path.endsWith(".css") && source.has(path))) return this.packages.styles(active.artifact, source, changed, options.signal);
+      // A dependency-free app with unchanged npm inputs already has a verified lock.
+      if (options.updateLock && changed.every(path => !/(^|\/)(package(-lock)?\.json|npm-shrinkwrap\.json|\.npmrc)$/.test(path))) {
+        const lock = JSON.parse(source.get("package-lock.json")?.toString() ?? "null");
+        const manifest = JSON.parse(source.get("package.json")!.toString());
+        if (!manifest.workspaces && lock?.packages && Object.keys(lock.packages).length === 1 &&
+          !["dependencies", "optionalDependencies", "devDependencies", "peerDependencies"].some(field => Object.keys(manifest[field] ?? {}).length)) {
+          return this.packages.prepare(source, { ...options, updateLock: false });
+        }
+      }
     }
     return this.packages.prepare(source, options);
   }

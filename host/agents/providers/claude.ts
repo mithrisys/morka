@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import type { ActionPrompt, AgentConnection, AgentPrompt } from "../contracts";
-import { buildPrompt, effortChoice } from "../context";
+import { buildPrompt, guidePaths, effortChoice } from "../context";
 import { agentLaunch } from "../process";
 import { toolActivity } from "../activity";
 
@@ -22,6 +22,8 @@ type Output = {
 };
 
 export class ClaudeConnection implements AgentConnection {
+  readonly supportsImages = true;
+  reviewConnection() { return new ClaudeConnection(this.skillsRoot); }
   private readonly children = new Set<ChildProcessWithoutNullStreams>();
 
   constructor(private readonly skillsRoot: string) {}
@@ -56,6 +58,7 @@ export class ClaudeConnection implements AgentConnection {
     if (turn?.effort) args.push("--effort", turn.effort);
     if (schema) args.push("--json-schema", JSON.stringify(schema));
     const attachments = turn?.attachments?.map(attachment => attachment.kind === "folder" ? attachment.path : dirname(attachment.path)) ?? [];
+    if (turn?.project.target === "app") attachments.push(...guidePaths(this.skillsRoot).map(path => dirname(path)));
     for (const path of attachments) args.push("--add-dir", path);
     const cli = await agentLaunch("claude", args);
     signal.throwIfAborted();

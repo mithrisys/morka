@@ -1,3 +1,4 @@
+import { readPreview, type PreviewScenario } from "./preview-scenario";
 import { actionName, compileActions, type AgentDefinition } from "../agent-actions/manifest";
 import { entryFile, projectPath, type Files } from "./files";
 
@@ -9,6 +10,7 @@ export type ShadowRef = { id: string; version: string; digest: string; skill: st
 export type Manifest = { version: 1; runtime: Runtime; agentActions?: { definitions: string; skills?: string }; instructions?: string[]; shadows?: ShadowRef[] };
 export type Project = {
   manifest: Manifest; files: Files; actions: Map<string, AgentDefinition>;
+  preview?: PreviewScenario;
   agentFiles: Record<string, string>;
 };
 
@@ -106,5 +108,10 @@ export async function compileProject(files: Files): Promise<Project> {
       }
     }
   }
-  return { manifest, files, agentFiles, actions: compileActions(agentFiles) };
+  const actions = compileActions(agentFiles);
+  const preview = readPreview(files);
+  for (const [id, output] of Object.entries(preview?.actions ?? {})) {
+    if (!actions.get(id)?.validateOutput(output)) throw Error("morka.preview.json: Invalid synthetic output for action " + id);
+  }
+  return { manifest, files, agentFiles, actions, preview };
 }

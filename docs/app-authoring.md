@@ -38,6 +38,8 @@ Each chat has a persistent history and its own draft. Morka applies validated ed
 
 When the app source changes outside Morka, a draft with no independent edits follows the current source. If the draft also contains unpublished edits, Morka preserves it and lists the files that need reconciliation.
 
+The optional [preview scenario](preview-scenarios.md) exercises a workflow with synthetic data and the prepared frontend. Keep fast behavior tests in the app’s `morka:check` script. Watched changes schedule follow-up checks after activation.
+
 ## Agents and chat sessions
 
 In **AI setup**, check whether Codex and Claude Code are installed and signed in. After signing in through a terminal, click **Check again**. The first in-app AI action in a checkout asks for access to the local account. Morka stores the permission on that machine. Use **Reset app access** in **AI setup** to revoke it. Set `CODEX_BIN` or `CLAUDE_BIN` to override the CLI path.

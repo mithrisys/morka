@@ -13,9 +13,15 @@ if (!asset) throw new Error(`No release target for ${target}.`);
 const output = resolve("release/downloads");
 await mkdir(output, { recursive: true });
 const stage = await mkdtemp(resolve("release/.desktop-"));
-const kit = resolve("dist/npm");
+const defaultKit = resolve("dist/npm");
 const run = (cmd, args) => execFileSync(cmd, args, { stdio: "inherit" });
 try {
+  const releaseLock = process.env.MORKA_RELEASE_PROJECT_LOCK;
+  const kit = releaseLock ? join(stage, "npm") : defaultKit;
+  if (releaseLock) {
+    await cp(defaultKit, kit, { recursive: true });
+    await cp(releaseLock, join(kit, "project-lock.json"));
+  }
   const image = join(stage, "image");
   await mkdir(image);
   if (process.platform === "darwin") {

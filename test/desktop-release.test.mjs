@@ -45,3 +45,28 @@ test("checksums require the exact desktop downloads for all supported architectu
   await writeFile(join(dir, "unexpected"), "extra");
   await assert.rejects(writeChecksums(dir, "1.2.3"));
 });
+
+test("desktop release scaffolds pin the same archives published by the release job", async () => {
+  const { publishedProjectLock } = await import("../scripts/releases/project-lock.mjs");
+  const { createHash } = await import("node:crypto");
+  const archives = { runtime: Buffer.from("runtime"), packager: Buffer.from("packager") };
+  const input = JSON.parse(await readFile("packages/project-template/package-lock.json", "utf8"));
+  for (const [name, bytes] of Object.entries(archives)) {
+    Object.assign(input.packages["node_modules/@morkaai/" + name], {
+      version: "0.3.0-beta.3", resolved: "file:" + name + ".tgz",
+      integrity: "sha512-" + createHash("sha512").update(bytes).digest("base64")
+    });
+  }
+  input.packages["node_modules/@morkaai/packager"].peerDependencies["@morkaai/runtime"] = "0.3.0-beta.3";
+  assert.throws(() => publishedProjectLock("0.3.0-beta.3", {...archives, runtime: Buffer.from("wrong")}, structuredClone(input)), /does not match/);
+  const lock = publishedProjectLock("0.3.0-beta.3", archives, input);
+  assert.equal(lock.packages[""].dependencies["@morkaai/runtime"], "0.3.0-beta.3");
+  assert.equal(lock.packages[""].devDependencies["@morkaai/packager"], "0.3.0-beta.3");
+  for (const component of ["runtime", "packager"]) {
+    const pkg = lock.packages["node_modules/@morkaai/" + component];
+    assert.equal(pkg.version, "0.3.0-beta.3");
+    assert.equal(pkg.resolved, "https://registry.npmjs.org/@morkaai/" + component + "/-/" + component + "-0.3.0-beta.3.tgz");
+    assert.equal(pkg.integrity, "sha512-" + createHash("sha512").update(component).digest("base64"));
+  }
+  assert.equal(lock.packages["node_modules/@morkaai/packager"].peerDependencies["@morkaai/runtime"], "0.3.0-beta.3");
+});

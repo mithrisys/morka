@@ -279,3 +279,10 @@ test('common editing prompts index optional guides and preserve project rules',a
   assert.doesNotMatch(prompt,/This action summarizes supplied text/);
   assert.deepEqual(selectSkills('shadow'),['morka-shadow-authoring']);
 });
+
+test('restricted editors can request only named built-in guides',async()=>{
+  const {readGuide}=require('../dist/agents/context.js');
+  const root=join(__dirname,'../dist/skills');
+  assert.match(await readGuide(root,'morka-design'),/accessibility|keyboard/i);
+  for(const name of ['../package.json','constructor','__proto__']) await assert.rejects(readGuide(root,name),/Unknown editing guide/);
+});

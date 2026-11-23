@@ -11,8 +11,13 @@ const guides = {
   "morka-runtime": "packages, services, persistent data and live update hooks",
   "morka-agent-action": "connecting a UI control to a validated AI action",
 };
+export const guideNames = Object.keys(guides);
+export async function readGuide(root: string, name: unknown) {
+  if (typeof name !== "string" || !Object.hasOwn(guides, name)) throw Error("Unknown editing guide.");
+  return readFile(join(root, name, "SKILL.md"), "utf8");
+}
 export function guidePaths(root: string) {
-  return Object.keys(guides).map(name => join(root, name, "SKILL.md"));
+  return guideNames.map(name => join(root, name, "SKILL.md"));
 }
 const shadowSkill = "morka-shadow-authoring";
 export function selectSkills(target: "app" | "shadow") {

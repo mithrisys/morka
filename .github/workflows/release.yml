@@ -53,10 +53,11 @@ jobs:
       - run: npm run check:versions
       - run: npm ci
       - run: npm run build -- --portable
+      - run: node scripts/releases/project-lock.mjs dist/archives/project-lock.json
       - uses: actions/upload-artifact@v4
         with:
           name: npm-packages
-          path: dist/archives/*.tgz
+          path: dist/archives/
           if-no-files-found: error
 
   desktop:

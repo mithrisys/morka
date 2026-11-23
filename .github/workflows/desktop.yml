@@ -53,7 +53,14 @@ jobs:
           architecture: ${{ matrix.arch }}
           cache: npm
       - run: npm ci
+      - uses: actions/download-artifact@v4
+        if: inputs.commit != ''
+        with:
+          name: npm-packages
+          path: release/canonical-kit
       - run: npm run package:desktop
+        env:
+          MORKA_RELEASE_PROJECT_LOCK: ${{ inputs.commit && 'release/canonical-kit/project-lock.json' || '' }}
       - name: Mount and test the disk image
         if: runner.os == 'macOS'
         run: bash scripts/releases/test-dmg.sh release/downloads/*.dmg

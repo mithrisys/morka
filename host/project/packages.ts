@@ -6,7 +6,7 @@ import { applyFiles, digest, info, projectPath, snapshot, type Files } from "./f
 import { bundledToolchain, packageProcess, type Toolchain } from "./toolchain";
 
 export type Artifact = { key: string; directory: string; source: Files; sourceHash: string; toolchain: Toolchain; built: boolean; configHash: string };
-export type PackageOptions = { signal?: AbortSignal; updateLock?: boolean; onLog?: (text: string) => void; offline?: boolean };
+export type PackageOptions = { signal?: AbortSignal; updateLock?: boolean; recheck?: boolean; onLog?: (text: string) => void; offline?: boolean };
 const format = 5;
 
 function inside(root: string, path: string) {
@@ -69,7 +69,7 @@ export class AppPackages {
     packageJson(source);
     const toolchain = await bundledToolchain(this.toolchainRoot);
     const configHash = await this.configurationHash();
-    const request = this.key(source, toolchain, configHash);
+    const request = this.key(source, toolchain, configHash) + (options.recheck ? ":recheck" : "");
     const existing = this.pending.get(request);
     if (existing) return existing;
     const task = this.build(new Map(source), toolchain, options, configHash).finally(() => this.pending.delete(request));
@@ -131,7 +131,7 @@ export class AppPackages {
   private async build(source: Files, toolchain: Toolchain, options: PackageOptions, configHash: string): Promise<Artifact> {
     options.signal?.throwIfAborted();
     const cached = await this.cached(source, toolchain, configHash);
-    if (cached) return cached;
+    if (cached && !options.recheck) return cached;
     const releases = join(this.home, "releases");
     await mkdir(releases, { recursive: true, mode: 0o700 });
     const stage = await mkdtemp(join(releases, ".prepare-"));
@@ -150,7 +150,7 @@ export class AppPackages {
         await npm(["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"]);
         source.set("package-lock.json", await readFile(join(directory, "package-lock.json")));
         const reused = await this.cached(source, toolchain, configHash);
-        if (reused) return reused;
+        if (reused && !options.recheck) return reused;
       }
       const lock = JSON.parse(source.get("package-lock.json")!.toString());
       if (lock.lockfileVersion < 2 || !lock.packages) throw new Error("Use an npm lockfile version 2 or newer.");

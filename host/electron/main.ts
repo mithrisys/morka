@@ -1,3 +1,4 @@
+import { reviewScenario } from "./scenario-review";
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomInt, randomUUID } from "node:crypto";
@@ -241,7 +242,8 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
     if (!contents.isDestroyed()) contents.send("runtime:state", runtimeState);
   };
   const livePreview = new LivePreview(contents, detail => setRuntimeState("error", detail));
-  chats.setProjectPreparer((files, signal, onLog) => managed.prepare(files, { signal, updateLock: true, onLog }));
+  chats.setPreviewReviewer(reviewScenario);
+  chats.setProjectPreparer((files, signal, onLog, recheck) => managed.prepare(files, { signal, updateLock: true, onLog, recheck }));
   type Publish = () => Promise<() => Promise<void>>;
   chats.setProjectActivator((next, publish, signal) => activateDraft(next, publish, signal));
   chats.setShadowLoader(loadImportedShadow);

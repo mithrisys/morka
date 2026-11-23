@@ -5,10 +5,18 @@ import { attachmentContext } from "./attachments";
 import { entryFile } from "../project/files";
 
 export const projectSkill = "morka-app";
-const actionSkill = "morka-agent-action";
+const guides = {
+  "morka-design": "layout, accessibility and user flows",
+  "morka-engineering": "feature design, behavior tests and preview scenarios",
+  "morka-runtime": "packages, services, persistent data and live update hooks",
+  "morka-agent-action": "connecting a UI control to a validated AI action",
+};
+export function guidePaths(root: string) {
+  return Object.keys(guides).map(name => join(root, name, "SKILL.md"));
+}
 const shadowSkill = "morka-shadow-authoring";
 export function selectSkills(target: "app" | "shadow") {
-  return target === "shadow" ? [shadowSkill] : [projectSkill, actionSkill];
+  return target === "shadow" ? [shadowSkill] : [projectSkill];
 }
 
 export function projectInstructions(project: ProjectContext) {
@@ -41,7 +49,9 @@ export function sharedHistory(messages: ChatMessage[]) {
 export function readEditingSkills(names: string[], skillsRoot: string, editor: string) {
   return Promise.all(names.map(async name => {
     const body = await readFile(join(skillsRoot, name, "SKILL.md"), "utf8");
-    return body.replaceAll("`apply_patch`", editor);
+    const catalog = name === projectSkill ? "\nRead applicable guides using your file reader:\n" +
+      Object.entries(guides).map(([id, topic]) => topic + " — " + join(skillsRoot, id, "SKILL.md")).join("\n") : "";
+    return (body + catalog).replaceAll("`apply_patch`", editor);
   }));
 }
 

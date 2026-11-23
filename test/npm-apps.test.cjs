@@ -203,8 +203,9 @@ test('dependency and build failures return to the agent before source activation
     const result=await sessions.send(chat.id,'Add a build',undefined,event=>events.push(event.message),undefined,{providerId:'codex'});
     assert.equal(prompts,2);assert.ok(result.project);assert.ok(result.project.files.has('package-lock.json'));
     assert.ok(events.some(({ activity })=>activity?.kind==='command' && activity.status==='failed'));
-    assert.equal(events.at(-1).activity.title,'npm dependencies and build verified');
-    assert.equal((await sessions.select(chat.id)).find(({ activity })=>activity?.kind==='run').activity.title,'npm dependencies and build verified');
+    assert.ok(events.some(e=>e.activity?.title==='npm dependencies and build verified'));
+    assert.equal(events.at(-1).activity.title,'Change applied');
+    assert.equal((await sessions.select(chat.id)).find(({ activity })=>activity?.kind==='run').activity.title,'Change applied');
     assert.equal((await snapshot(root)).has('missing-build.cjs'),true);
     assert.equal(result.project.files.has('node_modules/app-library/package.json'),false);
   }finally{sessions.close();}
@@ -428,4 +429,91 @@ test('managed Node apps pass their own data to a validated agent action',()=>fix
 
   source.set('agents.json',bytes([{...action,extra:true}]));
   await assert.rejects(compileProject(source),/Unknown field "extra"/);
+}));
+
+test('source-only edits to a dependency-free starter reuse the verified lock and run the app check',()=>fixture(async home=>{
+  const files=await snapshot(join(__dirname,'../host/app-runtime/starter'));
+  files.set('morka.project.json',bytes({version:1,runtime:{type:'node'}}));
+  const runtime=new ManagedRuntime(home,join(home,'runtime'),join(home,'data'),()=>{});
+  try {
+    const first=await runtime.prepare(files,{updateLock:true});
+    await runtime.update(first.source,readManifest(first.source).runtime,{beforeActivate:async()=>{},activate:async()=>{}});
+    const next=new Map(first.source);
+    next.set('main.js',bytes('document.title="Ready";'));
+    let log='';
+    await runtime.prepare(next,{updateLock:true,onLog:text=>{log+=text}});
+    assert.doesNotMatch(log,/Resolving the app lockfile/);
+    assert.match(log,/Checking the app/);
+  } finally { await runtime.stop(); }
+}));
+
+test('a generated meeting app keeps only confirmed SQLite commitments across a live edit and reopen',()=>fixture(async home=>{
+  const root=join(home,'app');
+  const source=await snapshot(join(__dirname,'../host/app-runtime/starter'));
+  source.set('morka.project.json',bytes({version:1,runtime:{type:'node'},agentActions:{definitions:'agents.json',skills:'skills'}}));
+  await put(root,source);
+  const store=`import {DatabaseSync} from 'node:sqlite';
+    import {join} from 'node:path';
+    export function commitments(dir) {
+      const db=new DatabaseSync(join(dir,'notes.sqlite'));
+      db.exec('CREATE TABLE IF NOT EXISTS items (text TEXT NOT NULL)');
+      return { list:()=>db.prepare('SELECT text FROM items').all().map(x=>x.text),
+        confirm:text=>db.prepare('INSERT INTO items VALUES (?)').run(text),close:()=>db.close() };
+    }`;
+  const server=`import {createServer} from 'node:http';
+    import {commitments} from './store.mjs';
+    const items=commitments(process.env.MORKA_DATA_DIR);
+    createServer(async(req,res)=>{
+      if(req.url==='/confirm' && req.method==='POST'){
+        let body='';for await(const chunk of req)body+=chunk;
+        items.confirm(JSON.parse(body).text);
+      }
+      res.end(req.url==='/health'?'ready':JSON.stringify(items.list()));
+    }).listen(Number(process.env.PORT),process.env.HOST);`;
+  const schema={type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false};
+  let editing=false;
+  const mock={get:()=>({info:{id:'mock',name:'Mock'},connection:{prompt:async turn=>{
+    if(editing) await writeFile(join(turn.cwd,'styles.css'),'button { padding: 1rem; }');
+    else {
+      await mkdir(join(turn.cwd,'skills/extract'),{recursive:true});
+      await writeFile(join(turn.cwd,'skills/extract/SKILL.md'),'Extract a commitment from the supplied note.');
+      await writeFile(join(turn.cwd,'agents.json'),JSON.stringify([{id:'extract',skill:'extract',session:'ephemeral',
+        instructions:'Extract a commitment.',inputSchema:schema,outputSchema:schema}]));
+      await writeFile(join(turn.cwd,'store.mjs'),store);
+      await writeFile(join(turn.cwd,'server.mjs'),server);
+      await writeFile(join(turn.cwd,'store.test.mjs'),`import test from 'node:test';import assert from 'node:assert/strict';
+        import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';
+        import {commitments} from './store.mjs';
+        test('save only on confirmation',async()=>{
+          const dir=mkdtempSync(join(tmpdir(),'notes-'));const db=commitments(dir);
+          try {const fake=async()=>({text:'Call client'});const suggestion=await fake();
+            assert.deepEqual(db.list(),[]);db.confirm(suggestion.text+' Friday');assert.deepEqual(db.list(),['Call client Friday']);}
+          finally{db.close();rmSync(dir,{recursive:true,force:true})}
+        });`);
+    }
+    return 'completed';
+  }}})};
+  const sessions=await ChatSessions.open(join(home,'chats'),root,mock);
+  const runtimeHome=join(home,'runtime'),data=join(home,'data');
+  const open=()=>new ManagedRuntime(root,runtimeHome,data,assert.fail);
+  let runtime=open();
+  const callbacks={beforeActivate:async()=>{},activate:async()=>{}};
+  sessions.setProjectPreparer((files,signal,onLog)=>runtime.prepare(files,{signal,onLog,updateLock:true}));
+  sessions.setProjectActivator((project,publish,signal)=>runtime.update(project.files,project.manifest.runtime,{...callbacks,publish},{signal}));
+  const chat=await sessions.create();
+  try {
+    await sessions.send(chat.id,'Save meeting commitments in SQLite after confirmation',undefined,()=>{},undefined,{providerId:'mock'});
+    const list=async()=> (await fetch(runtime.url)).json();
+    assert.deepEqual(await list(),[]);
+    const project=await compileProject(await snapshot(root));
+    assert.ok(project.actions.get('extract').validateOutput({text:'Call client'}));
+    await fetch(new URL('/confirm',runtime.url),{method:'POST',body:JSON.stringify({text:'Call client Friday'})});
+    editing=true;
+    await sessions.send(chat.id,'Increase button spacing',undefined,()=>{},undefined,{providerId:'mock'});
+    assert.deepEqual(await list(),['Call client Friday']);
+    await runtime.stop();runtime=open();
+    const saved=await runtime.recover();
+    await runtime.update(saved.source,readManifest(saved.source).runtime,callbacks,{prepared:saved});
+    assert.deepEqual(await list(),['Call client Friday']);
+  } finally {sessions.close();await runtime.stop();}
 }));

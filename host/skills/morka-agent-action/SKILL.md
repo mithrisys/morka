@@ -37,3 +37,5 @@ This action summarizes supplied text. The execution skill adds task-specific gui
 ```
 
 When the app needs external data, implement the integration in the app's Node backend and expose the needed data through a same-origin endpoint. Keep API credentials server-side. For features that need AI, pass the relevant response data as input to the action and describe how to interpret it in the execution skill. For features that only display fetched data, render the response directly.
+
+Make the data being processed apparent at the point of use. Keep user input editable or safely preserved during processing. Prevent duplicate submissions, display progress and provide a retry on rejection, invalid output or connection failure. Let users edit suggestions before committing changes when appropriate. Preserve the original on failure and ignore stale responses after the input changes. Verify both success and failure with synthetic responses.

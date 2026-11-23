@@ -19,7 +19,7 @@ async function harness(initial, options = {}) {
   const handlers = new Map();
   const messages = [];
   const chats = {
-    close() {}, setProjectPreparer() {}, setShadowLoader() {},
+    close() {}, setPreviewReviewer() {}, setProjectPreparer() {}, setShadowLoader() {},
     setProjectActivator(activate) { this.activate = activate; },
     async send() {
       await this.activate(current, async () => async () => {}, new AbortController().signal);

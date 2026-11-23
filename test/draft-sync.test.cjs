@@ -173,3 +173,109 @@ test('a chat resumes after an external edit with its history, native session and
   assert.equal(await readFile(join(root,'todos.sqlite'),'utf8'),'current user records');
   sessions.close();
 }));
+
+test('invalid preview scenarios fail before publication; existing apps remain compatible', async () => {
+  const { compileProject } = require('../dist/project/project.js');
+  const source = files({'morka.project.json':'{"version":1,"runtime":{"type":"node"}}'});
+  assert.equal((await compileProject(source)).preview, undefined);
+  source.set('morka.preview.json', Buffer.from(JSON.stringify({steps:[{click:'#save'}], route:'https://example.org'})));
+  await assert.rejects(compileProject(source), /morka.preview.json/);
+});
+
+test('the starter runs fast behavioral checks with no production dependencies', async () => {
+  const pkg = require('../host/app-runtime/starter/package.json');
+  assert.equal(pkg.scripts.test,'node --test');
+  assert.equal(pkg.scripts['morka:check'],pkg.scripts.test);
+  assert.deepEqual(pkg.dependencies,{});
+});
+
+test('chat verifies the first scenario before publishing, preserves CSS speed and cancels superseded reviews',()=>fixture(async directory=>{
+  const root=join(directory,'app');
+  await put(root,files({'morka.project.json':'{"version":1,"runtime":{"type":"node"}}','index.html':'<body></body>','main.js':''}));
+  let calls=0,mode='first',releaseReview,startedReview,backgroundSignal;
+  const started=new Promise(resolve=>{startedReview=resolve});
+  const scenario={steps:[{kind:'expect',selector:'h1'}],watch:['main.js']};
+  const registry={get:()=>({info:{id:'mock',name:'Mock'},connection:{prompt:async turn=>{
+    calls++;
+    if(mode==='first'){
+      await writeFile(join(turn.cwd,'index.html'),'<h1>Notes</h1>');
+      if(calls===2) await writeFile(join(turn.cwd,'morka.preview.json'),JSON.stringify(scenario));
+    }
+    if(mode==='logic') await writeFile(join(turn.cwd,'main.js'),'document.title="Notes";');
+    if(mode==='css') await writeFile(join(turn.cwd,'styles.css'),'h1{color:green}');
+    return 'completed';
+  }}})};
+  const sessions=await ChatSessions.open(join(directory,'chat'),root,registry);
+  sessions.setProjectPreparer(async source=>({source,built:false,directory:root}));
+  let reviews=0;
+  sessions.setPreviewReviewer(async (_dir,_scenario,signal)=>{
+    reviews++;
+    if(mode==='first') assert.equal(await readFile(join(root,'index.html'),'utf8'),'<body></body>');
+    if(mode==='logic'){
+      backgroundSignal=signal;
+      startedReview();
+      await new Promise(resolve=>{releaseReview=resolve});
+    }
+  });
+  const chat=await sessions.create();
+  const events=[];
+  const send=text=>sessions.send(chat.id,text,undefined,event=>events.push(event.message.text),undefined,{providerId:'mock'});
+  await send('Build a notebook');
+  assert.equal(calls,2);
+  assert.equal(reviews,1);
+  mode='logic'; await send('Change logic'); await started;
+  mode='css'; await send('Adjust color');
+  assert.ok(backgroundSignal.aborted);
+  releaseReview();
+  assert.equal(reviews,2);
+  const before=calls;
+  await send('/review');
+  assert.equal(calls,before);
+  assert.equal(reviews,3);
+  assert.ok(events.includes('Change applied') || events.includes('completed'));
+  sessions.close();
+}));
+
+test('background repair is isolated, rechecked and applied only to the reviewed version',()=>fixture(async directory=>{
+  const root=join(directory,'app');
+  const scenario={steps:[{kind:'expect',selector:'button'}],watch:['main.js']};
+  await put(root,files({'morka.project.json':'{"version":1,"runtime":{"type":"node"}}',
+    'morka.preview.json':JSON.stringify(scenario),'main.js':'old'}));
+  const registry={get:()=>({info:{id:'mock',name:'Mock'},connection:{
+    async prompt(turn){await writeFile(join(turn.cwd,'main.js'),'broken');return 'completed'},
+    reviewConnection(){return {async prompt(turn){
+      assert.equal(await readFile(join(root,'main.js'),'utf8'),'broken');
+      await writeFile(join(turn.cwd,'main.js'),'fixed');return 'completed';
+    },close(){}}}
+  }})};
+  const sessions=await ChatSessions.open(join(directory,'chat'),root,registry);
+  let prepared;
+  sessions.setProjectPreparer(async source=>{prepared=source;return {source,built:false,directory:root}});
+  sessions.setProjectActivator(async (_project,publish)=>{await publish()});
+  sessions.setPreviewReviewer(async ()=>{if(prepared.get('main.js').toString()==='broken') throw Error('Missing visible button')});
+  const result=Promise.withResolvers();
+  const chat=await sessions.create();
+  await sessions.send(chat.id,'Change workflow',undefined,e=>{
+    if(e.message.activity?.title==='Review complete'||e.message.activity?.title==='Review needs attention')result.resolve(e.message);
+  },undefined,{providerId:'mock'});
+  const message=await result.promise;
+  assert.match(message.text,/Applied a verified repair/);
+  assert.equal(await readFile(join(root,'main.js'),'utf8'),'fixed');
+  sessions.close();
+}));
+
+test('common editing prompts index optional guides and preserve project rules',async()=>{
+  const {selectSkills,buildPrompt,guidePaths}=require('../dist/agents/context.js');
+  const skillsRoot=join(__dirname,'../dist/skills');
+  const skills=selectSkills('app');
+  const prompt=await buildPrompt({skills,project:{target:'app',paths:[],instructions:{layout:'Respect this layout'}},
+    files:{},history:[],text:'Adjust the spacing'},skillsRoot,'Edit',false);
+  assert.deepEqual(skills,['morka-app']);
+  for(const path of guidePaths(skillsRoot)){
+    assert.ok(prompt.includes(path));
+    assert.ok((await readFile(path,'utf8')).includes('description:'));
+  }
+  assert.match(prompt,/Respect this layout/);
+  assert.doesNotMatch(prompt,/This action summarizes supplied text/);
+  assert.deepEqual(selectSkills('shadow'),['morka-shadow-authoring']);
+});

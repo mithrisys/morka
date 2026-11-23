@@ -1,3 +1,4 @@
+import { repairReview } from "./review-repair";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -8,9 +9,12 @@ import { compileProject, instructionPaths, readManifest, type Project, type Shad
 import { synchronizeDraft } from "../project/drafts";
 import { shadowContext, stageShadow, validateShadow, type Shadow } from "../project/shadows";
 import { editableAppFiles, isShadowStorage, saveShadowInstallation } from "../project/shadow-effects";
+import type { AgentConnection } from "./contracts";
 import { AgentRegistry } from "./registry";
 import { selectSkills } from "./context";
-import { AttachmentStore } from "./attachments";
+import { firstWorkflow, previewFile, reviewTiming, type PreviewScenario } from "../project/preview-scenario";
+import { inspectScreens } from "./visual-review";
+import { AttachmentStore, type AgentAttachment } from "./attachments";
 
 type NativeSession = { id: string; cursor: number };
 type SavedChat = ChatSession & {
@@ -22,12 +26,25 @@ type SavedChat = ChatSession & {
 type SavedIndex = { selected?: string; chats: SavedChat[] };
 type Publish = () => Promise<() => Promise<void>>;
 
+type ReviewCheck = (directory: string, scenario: PreviewScenario, signal: AbortSignal, visual: boolean) => Promise<string>;
+type BackgroundReview = {
+  id: string; turnId: string; root: string; source: Files; directory: string; scenario: PreviewScenario;
+  visual: boolean; model?: string; request: string; connection: AgentConnection;
+  check: ReviewCheck; emit: (event: ChatEvent) => void;
+};
+
 const newChatTitle = "New chat";
 export class ChatSessions {
   private active?: { id: string; controller: AbortController };
+  private background?: AbortController;
+  private reviewActivation?: Promise<void>;
+  private writing: Promise<void> = Promise.resolve();
+  private reviewer?: (directory: string, scenario: PreviewScenario, signal: AbortSignal,
+    inspect?: (images: AgentAttachment[], signal: AbortSignal) => Promise<void>) => Promise<void>;
+  setPreviewReviewer(review: NonNullable<ChatSessions["reviewer"]>) { this.reviewer = review; }
   readonly attachments: AttachmentStore;
   private prepareProject?: (files: Files, signal: AbortSignal,
-    onLog: (text: string) => void) => Promise<{ source: Files; built: boolean }>;
+    onLog: (text: string) => void, recheck?: boolean) => Promise<{ source: Files; built: boolean; directory?: string }>;
   private activateProject?: (project: Project, publish: Publish, signal: AbortSignal) => Promise<void>;
   private readPendingShadow?: (reference: ShadowPackageReference) => Promise<Shadow>;
 
@@ -66,13 +83,16 @@ export class ChatSessions {
 
   setProjectRoot(root: string, repository: string) {
     if (this.active) throw new Error("A turn is already in progress.");
+    this.background?.abort();
     this.root = root;
     this.repository = repository;
   }
 
   private async save(index: SavedIndex) {
-    await writeTextAtomically(join(this.directory, "chats.json"), JSON.stringify(index));
     this.index = index;
+    const write = this.writing.then(() => writeTextAtomically(join(this.directory, "chats.json"), JSON.stringify(index)));
+    this.writing = write.catch(() => {});
+    await write;
   }
 
   private session(id: string) {
@@ -107,10 +127,17 @@ export class ChatSessions {
   async send(id: string, text: string, model: string | undefined, emit: (event: ChatEvent) => void, shadow: Shadow | undefined, selection: AgentSelection, attachmentIds: string[] = []) {
     if (this.active) throw new Error("A turn is already in progress.");
     if (shadow && this.target !== "app") throw new Error("Install Shadows from an app workspace.");
+    this.background?.abort();
     let chat = this.session(id);
     const agent = this.registry.get(selection.providerId);
     const messages = new Map<string, ChatMessage>();
     const turnId = randomUUID();
+    const fullReview = this.target === "app" && (
+      /^\/review(?:\s|$)/i.test(text.trim()) ||
+      /^(?:please )?(?:review|check|test) (?:the |my )?(?:whole|entire) app[.!]?$/i.test(text.trim()) ||
+      /^(?:لطفاً? )?کل (?:اپ|برنامه) (?:رو|را) بررسی کن[.!]?$/.test(text.trim())
+    );
+    let startBackground: (() => void) | undefined;
     let transcript: ChatMessage[] | undefined;
     let finished = false;
     let outcome: ChatActivity["status"] = "failed";
@@ -130,6 +157,7 @@ export class ChatSessions {
     const { signal } = controller;
     this.active = { id, controller };
     try {
+      await this.reviewActivation?.catch(() => {});
       if (!shadow && chat.pendingShadow) shadow = await this.readPendingShadow?.(chat.pendingShadow.package);
       transcript = chat.messages;
       const attachments = await this.attachments.context([...transcript.flatMap(item => item.attachments?.map(attachment => attachment.id) ?? []), ...attachmentIds], signal);
@@ -176,12 +204,12 @@ export class ChatSessions {
           await this.update(chat);
         },
       }); };
-      const turn = await prompt();
+      const turn = fullReview && draft.has(previewFile) ? "completed" : await prompt();
       if (signal.aborted || turn === "interrupted") { outcome = "stopped"; return { stopped: true }; }
       finished = true;
 
       let updated = await snapshot(workspace);
-      if (digest(current) === digest(updated)) {
+      if (!fullReview && digest(current) === digest(updated)) {
         chat = { ...chat, activationFailure: undefined, pendingShadow: undefined };
         outcome = "completed";
         return {};
@@ -204,16 +232,29 @@ export class ChatSessions {
         const text = describeChanges(current, updated);
         if (text) message({ id: randomUUID(), role: "activity", text });
       }
+      let preparedDirectory: string | undefined;
+      let timing: ReturnType<typeof reviewTiming>;
+      const check = async (directory: string, scenario: PreviewScenario, reviewSignal: AbortSignal, visual: boolean) => {
+        const inspect = visual && agent.connection.supportsImages && agent.connection.reviewConnection
+          ? (images: AgentAttachment[], s: AbortSignal) => inspectScreens(agent.connection.reviewConnection!(), images, s, model)
+          : undefined;
+        await this.reviewer!(directory, scenario, reviewSignal, inspect);
+        return "Scenario passed at 1280 and 640 px. " + (inspect ? "Visual inspection passed." : "Visual inspection did not run.");
+      };
       let project: Awaited<ReturnType<typeof compileProject>>;
       for (let attempt = 0; ; attempt++) {
         let preparing = false;
         try {
           project = await compileProject(next);
+          if (this.reviewer && !project.preview && firstWorkflow(current, next)) {
+            throw Error("Add morka.preview.json with a user-visible expectation for the first workflow.");
+          }
           if (!isDeepStrictEqual(project.manifest.shadows, expected)) throw new Error("Use the Shadows panel to change installed packages.");
           if (project.manifest.runtime?.type === "node" && this.prepareProject) {
             preparing = true;
             const prepared = await this.prepareProject(next, signal, text => message({ id: "app-prepare", role: "activity", text,
-              activity: { kind: "command", status: "running", title: "Preparing app dependencies and build", detail: text } }));
+              activity: { kind: "command", status: "running", title: "Preparing app dependencies and build", detail: text } }), fullReview);
+            preparedDirectory = prepared.directory;
             for (const [path, bytes] of prepared.source) {
               if (!next.get(path)?.equals(bytes)) {
                 next.set(path, bytes); updated.set(path, bytes);
@@ -224,6 +265,15 @@ export class ChatSessions {
             preparationTitle = prepared.built ? "npm dependencies and build verified" : "npm dependencies ready";
             message({ id: "app-prepare", role: "activity", text: preparationTitle,
               activity: { kind: "command", status: "completed", title: preparationTitle } });
+          }
+          if (this.reviewer && preparedDirectory) {
+            if (fullReview && !project.preview) throw Error("Add morka.preview.json to describe the workflow to review.");
+            timing = project.preview && reviewTiming(current, changes(current, next), project.preview, fullReview);
+            if (timing === "required") {
+              preparing = false;
+              const detail = await check(preparedDirectory, project.preview!, signal, true);
+              message({id:"review", role:"activity", text:detail, activity:{kind:"command",status:"completed",title:"Review complete",detail}});
+            }
           }
           break;
         } catch (error) {
@@ -259,6 +309,19 @@ export class ChatSessions {
         }
       } else await publish();
       chat = { ...chat, base: digest(updated), activationFailure: undefined, pendingShadow: undefined };
+      preparationTitle = fullReview && !changed.length ? "Review complete" : "Change applied";
+      if (timing === "background" && this.reviewer && project.preview && preparedDirectory) {
+        const controller = new AbortController();
+        this.background = controller;
+        const review: BackgroundReview = { id, turnId, root, source: next, directory: preparedDirectory,
+          scenario: project.preview, visual: changed.includes(previewFile), model, request: text,
+          connection: agent.connection, check, emit };
+        startBackground = () => {
+          void this.backgroundReview(review, controller.signal)
+            .catch(error => { if (!controller.signal.aborted) console.error(error); })
+            .finally(() => { if (this.background === controller) this.background = undefined; });
+        };
+      }
       outcome = "completed";
       return this.activateProject ? {} : { project, changed };
     } catch (error) {
@@ -285,8 +348,58 @@ export class ChatSessions {
         }
       } finally {
         this.active = undefined;
+        if (startBackground) setImmediate(startBackground);
       }
     }
+  }
+
+  private async backgroundReview(review: BackgroundReview, signal: AbortSignal) {
+    signal.throwIfAborted();
+    const { id, turnId, root, source, directory, scenario, visual, check, emit } = review;
+    let revision = digest(source);
+    let detail: string;
+    let status: ChatActivity["status"] = "completed";
+    try {
+      detail = await check(directory, scenario, signal, visual);
+    } catch (error) {
+      status = "failed";
+      detail = error instanceof Error ? error.message : String(error);
+      if (signal.aborted) return;
+      if (review.connection.reviewConnection && this.prepareProject && this.activateProject && digest(await snapshot(root)) === revision) {
+        try {
+          signal.throwIfAborted();
+          const repaired = await repairReview(this.directory, source, review.connection.reviewConnection(), review.request, detail, review.model, signal);
+          const prepared = await this.prepareProject(repaired, signal, () => {});
+          const candidate = await compileProject(prepared.source);
+          if (!prepared.directory) throw Error("Missing prepared review assets.");
+          const checked = await check(prepared.directory, scenario, signal, visual);
+          signal.throwIfAborted();
+          if (digest(await snapshot(root)) !== revision) return;
+          signal.throwIfAborted();
+          this.reviewActivation = this.activateProject(candidate, async () => {
+            if (digest(await snapshot(root)) !== revision) throw Error("A newer edit superseded this repair.");
+            await applyFiles(root, source, prepared.source, signal);
+            return async () => { await applyFiles(root, prepared.source, source); };
+          }, signal);
+          try { await this.reviewActivation; } finally { this.reviewActivation = undefined; }
+          revision = digest(prepared.source);
+          detail = "Applied a verified repair. " + checked;
+          status = "completed";
+        } catch (repairError) {
+          detail += "\nRepair: " + (repairError instanceof Error ? repairError.message : repairError);
+        }
+      }
+    }
+    if (signal.aborted) return;
+    const currentRevision = digest(await snapshot(root));
+    if (signal.aborted || currentRevision !== revision) return;
+    const item: ChatMessage = {
+      id: turnId + ":background-review", role: "activity", turnId: turnId + ":review", text: detail,
+      activity: { kind: "run", status, title: status === "completed" ? "Review complete" : "Review needs attention", detail },
+    };
+    const latest = this.session(id);
+    await this.update({ ...latest, messages: [...latest.messages, item] });
+    if (!signal.aborted) emit({ chatId: id, message: item });
   }
 
   stop(id: string) {
@@ -294,6 +407,7 @@ export class ChatSessions {
   }
 
   close() {
+    this.background?.abort();
     this.active?.controller.abort();
   }
 }

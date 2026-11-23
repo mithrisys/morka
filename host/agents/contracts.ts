@@ -8,6 +8,7 @@ export type AgentPrompt = {
   sessionId?: string;
   text: string;
   attachments?: AgentAttachment[];
+  guides?: string[];
   model?: string;
   effort?: string;
   files: Readonly<Record<string, string>>;
@@ -24,6 +25,8 @@ export type ActionPrompt = {
   signal: AbortSignal;
 };
 export type AgentConnection = {
+  supportsImages?: boolean;
+  reviewConnection?(): AgentConnection;
   options(): Promise<AgentOptions>;
   prompt(turn: AgentPrompt): Promise<"completed" | "interrupted">;
   runAction?(turn: ActionPrompt): Promise<string>;

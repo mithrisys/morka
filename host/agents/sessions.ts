@@ -11,12 +11,12 @@ import { shadowContext, stageShadow, validateShadow, type Shadow } from "../proj
 import { editableAppFiles, isShadowStorage, saveShadowInstallation } from "../project/shadow-effects";
 import type { AgentConnection } from "./contracts";
 import { AgentRegistry } from "./registry";
-import { selectSkills } from "./context";
+import { guideNames, selectSkills } from "./context";
 import { firstWorkflow, previewFile, reviewTiming, type PreviewScenario } from "../project/preview-scenario";
 import { inspectScreens } from "./visual-review";
 import { AttachmentStore, type AgentAttachment } from "./attachments";
 
-type NativeSession = { id: string; cursor: number };
+type NativeSession = { id: string; cursor: number; guideTool?: boolean };
 type SavedChat = ChatSession & {
   base?: string; messages: ChatMessage[];
   native?: Record<string, NativeSession>;
@@ -189,14 +189,17 @@ export class ChatSessions {
       signal.throwIfAborted();
       const prompt = async (repair?: string, attempt = 0) => {
         const promptFiles = attempt ? await snapshot(workspace) : draft;
+        const native = chat.native?.[agent.info.id];
+        // Existing Codex threads keep their native ID and their original tool registration.
+        const legacyGuides = this.target === "app" && agent.info.id === "codex" && native && !native.guideTool;
         return agent.connection.prompt({
         cwd: workspace, repository: this.repository, otherRepository: this.otherRepository,
-        sessionId: chat.native?.[agent.info.id]?.id, text: repair ?? (text || "Review the attached files and ask what the user would like to do with them."), model, effort: selection.effort, attachments,
-        skills: selectSkills(this.target),
+        sessionId: native?.id, text: repair ?? (text || "Review the attached files and ask what the user would like to do with them."), model, effort: selection.effort, attachments,
+        skills: legacyGuides ? [...selectSkills(this.target), ...guideNames] : selectSkills(this.target),
         files: sourceContext(promptFiles, paths),
         project: { target: this.target, instructions, paths: [...promptFiles.keys()], shadow: shadow && shadowContext(shadow),
           activationFailure: chat.activationFailure },
-        history: transcript!, historySinceSession: transcript!.slice(chat.native?.[agent.info.id]?.cursor ?? 0),
+        history: transcript!, historySinceSession: transcript!.slice(native?.cursor ?? 0),
         onMessage: (item, append) => { if (item.role !== "user") message(attempt ? { ...item, id: `repair-${attempt}:${item.id}` } : item, append); },
         signal,
         storeSession: async sessionId => {

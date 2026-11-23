@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { ActionPrompt, AgentConnection, AgentPrompt } from "../contracts";
-import { effortChoice, projectInstructions, readEditingSkills, sharedHistory } from "../context";
+import { effortChoice, guideNames, projectInstructions, readEditingSkills, readGuide, sharedHistory } from "../context";
 import { attachmentContext } from "../attachments";
 import { activityStatus, toolActivity } from "../activity";
 import { agentLaunch } from "../process";
@@ -180,6 +180,14 @@ export class CodexClient {
     try { message = JSON.parse(line); } catch { return; }
     if (message.id !== undefined) {
       if (message.method) {
+        const call = message.params as { threadId?: string; turnId?: string; tool?: string; arguments?: { name?: unknown } } | undefined;
+        if (message.method === "item/tool/call" && !this.runtime && this.active && call?.threadId === this.active.threadId &&
+          call.turnId === this.active.id && call.tool === "read_morka_guide") {
+          const id = message.id;
+          const respond = (success: boolean, text: string) => this.write({ id, result: { success, contentItems: [{ type: "inputText", text }] } });
+          void readGuide(this.skillsRoot, call.arguments?.name).then(text => respond(true, text), () => respond(false, "Unknown or unavailable editing guide."));
+          return;
+        }
         this.write({ id: message.id, error: { code: -32601, message: "Unsupported client request." } });
       } else if (typeof message.id === "number") {
         const finish = this.pending.get(message.id);
@@ -236,14 +244,18 @@ export class CodexClient {
     this.active?.finish(error);
   }
 
-  async start(cwd: string, ephemeral = false) {
+  async start(cwd: string, ephemeral = false, appGuides = false) {
     await this.verifyPolicy(cwd);
-    return this.startThread(cwd, ephemeral);
+    return this.startThread(cwd, ephemeral, appGuides);
   }
 
-  private async startThread(cwd: string, ephemeral: boolean) {
+  private async startThread(cwd: string, ephemeral: boolean, appGuides = false) {
     const { thread } = await this.request<{ thread: { id: string; ephemeral: boolean } }>("thread/start", {
       cwd, ephemeral, sandbox: "read-only", approvalPolicy: "never",
+      ...(appGuides ? { dynamicTools: [{ type: "function", name: "read_morka_guide",
+        description: "Read a Morka app-authoring guide when it applies to the current edit.",
+        inputSchema: { type: "object", properties: { name: { type: "string", enum: guideNames } }, required: ["name"], additionalProperties: false },
+      }] } : {}),
     });
     if (Boolean(thread.ephemeral) !== ephemeral) throw new Error("Codex returned an unexpected session type.");
     this.loaded.add(thread.id);
@@ -279,6 +291,7 @@ export class CodexClient {
     const instructions = [
       projectInstructions(project),
       "Use apply_patch for changes.",
+      ...(project.target === "app" && !skills.includes("morka-runtime") ? ["Use read_morka_guide to read a relevant named editing guide on demand."] : []),
       ...await readEditingSkills(skills, this.skillsRoot, "`apply_patch`"),
     ].join("\n\n");
     return this.performTurn(threadId, {
@@ -398,7 +411,7 @@ export class CodexConnection implements AgentConnection {
 
   async prompt(turn: AgentPrompt) {
     const client = this.connect();
-    const id = turn.sessionId ?? await client.start(turn.cwd, this.ephemeral);
+    const id = turn.sessionId ?? await client.start(turn.cwd, this.ephemeral, turn.project.target === "app");
     const result = await client.send(id, turn, turn.sessionId ? undefined : () => turn.storeSession(id));
     if (result.status === "interrupted" || turn.signal.aborted) return "interrupted";
     if (result.status !== "completed") throw new Error(result.error?.message ?? "The Codex turn did not complete.");

@@ -2,6 +2,24 @@
 
 Release entries describe user-visible changes and upgrade steps, newest first.
 
+## 0.3.0-beta.3 (2026-11-24)
+
+New projects include accessible form and layout styles and fast Node test scripts. Editing agents can consult focused guidance for UI design, engineering, runtime services and AI actions while following each project’s conventions.
+
+### Workflow review
+
+Add a preview scenario or type `/review` in app chat to check a workflow with synthetic data at two window sizes. Image-capable providers can inspect temporary screenshots. The first scenario is checked before activation. Later watched edits can be reviewed and repaired in the background. Starting another edit cancels the previous review. Direct linked CSS changes preserve the live document and input.
+
+### Upgrading
+
+Existing apps can add a preview scenario when needed. To use this beta in an existing npm checkout, install the runtime and packager at the exact version `0.3.0-beta.3` together after publication. Commit both dependency declarations and the updated lockfile.
+
+### Known limitations
+
+Browser scenarios use prepared frontend assets and synthetic API responses. Server behavior belongs in app tests. The macOS download uses an ad-hoc signature. The Windows installer lacks an Authenticode publisher signature.
+
+[Full changelog](https://github.com/mithrisys/morka/compare/v0.3.0-beta.2...v0.3.0-beta.3)
+
 ## 0.3.0-beta.2 (2026-11-20)
 
 The desktop launcher responds to both project actions again. Swipe right to name a new project and choose its folder, or select **Open Project** to browse for an existing one.

@@ -6,6 +6,8 @@ This guide covers the project contract, agent setup, packaging, and the managed 
 
 Morka creates a Git repository for each app. **Open Project** opens an existing checkout, and **Clone** copies the app source into a new repository. Morka installs newly created apps for the current user. The same checkout shares its private app data, chats, and AI access settings across the system launcher, **Open Project**, and `npm start`.
 
+On Linux, projects created in the packaged Morka desktop app use Morka's desktop executable and bundled Node. Morka adds each project to the application menu with its own icon and keeps its generated releases in the private profile.
+
 The editable app source and `morka.project.json` live in `app/`. Declare app dependencies in `app/package.json` and commit `app/package-lock.json`. The repository root holds the npm launcher, project README, release settings, and Git metadata. Commit the source, lockfiles, and `.morka/` when sharing an app.
 
 With Node.js 24 or newer and npm, run these commands from the app repository root.

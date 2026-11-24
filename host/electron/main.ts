@@ -1,5 +1,5 @@
 import { reviewScenario } from "./scenario-review";
-import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from "electron";
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import { mkdirSync, statSync } from "node:fs";
@@ -20,9 +20,9 @@ import { AgentRunner } from "../agent-actions/runner";
 import { ActionAccess } from "../agent-actions/access";
 import { ChatSessions } from "../agents/sessions";
 import { AgentRegistry } from "../agents/registry";
-import { makeIcon, type AppInstance } from "../instances/macos";
+import { makeIcon, projectIcon, type AppInstance } from "../instances/macos";
 import { prepareMacProjectExecutable } from "../instances/distribution";
-import { installDesktopApp } from "../instances/desktop";
+import { installDesktopApp, installPackagedLinuxProject, linuxProjectArgument } from "../instances/desktop";
 import { appIcon, appName, appsDirectory, bundledKit, checkoutKey, materializeRepository, portableAppName, preparedRelease, readRelease, releaseFile, releaseProject, repositoryFile, repositoryProfileId, repositoryProject, type AppRelease } from "../instances/repository";
 import { containsPath, createShadowRepository, readShadowWorkspace, type ShadowWorkspace } from "../instances/shadow-repository";
 
@@ -54,7 +54,8 @@ async function openRepository(directory: string) {
   child.unref();
 }
 
-async function installRepository(repository: string) {
+async function installRepository(repository: string, spec: AppRelease) {
+  if (process.platform === "linux" && app.isPackaged) return installPackagedLinuxProject(repository, spec);
   const toolchain = await bundledToolchain(process.env.MORKA_DESKTOP_TOOLCHAIN);
   const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === "PATH") ?? "PATH";
   await promisify(execFile)(toolchain.node, [repositoryFile(repository, "npm", "install-app.cjs"), "--open"], {
@@ -96,7 +97,7 @@ function registerInstaller(
       const spec: AppRelease = { version: 1, id: randomUUID(), name, iconColor,
         ...(source ? { clonedFrom: { id: source.id, revision: digest(files) } } : {}) };
       const path = await materializeRepository(parent, spec, files, kitDirectory(), makeIcon(iconColor));
-      const openError = await installRepository(path).then(() => "", error => String(error));
+      const openError = await installRepository(path, spec).then(() => "", error => String(error));
       if (options.onInstalled) setImmediate(options.onInstalled, path, openError);
       return { path, openError };
     } catch (error) {
@@ -115,6 +116,7 @@ async function createLauncher() {
   const window = new BrowserWindow({
     width: 560, height: 400, minWidth: 440, minHeight: 360,
     title: "Morka", titleBarStyle, backgroundColor: "#ffffff",
+    icon: process.platform === "linux" ? join(__dirname, "../branding/morka-icon.png") : undefined,
     webPreferences: {
       preload: join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false,
     },
@@ -197,6 +199,7 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
   const window = new BrowserWindow({
     width: 1120, height: 730, minWidth: 720, minHeight: 460,
     title: instance.name, titleBarStyle,
+    icon: process.platform === "linux" ? projectIcon(instance.iconColor) : undefined,
     backgroundColor: "#f2f3f7",
     webPreferences: {
       preload: join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false,
@@ -688,7 +691,10 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
 
 async function start() {
   const macBundle = app.isPackaged && process.platform === "darwin";
-  const requestedRepository = process.env.MORKA_NPM_REPOSITORY?.trim();
+  const linuxProject = app.isPackaged && process.platform === "linux"
+    ? process.argv.find(argument => argument.startsWith(linuxProjectArgument))?.slice(linuxProjectArgument.length) : undefined;
+  const requestedRepository = linuxProject ?? process.env.MORKA_NPM_REPOSITORY?.trim();
+  if (linuxProject !== undefined && !isAbsolute(linuxProject)) throw new Error("The project path must be absolute.");
   const npmRepository = requestedRepository ? dirname(await repositoryProject(requestedRepository)) : undefined;
   const install = process.env.MORKA_INSTALL_APP;
   if (install === "1" || install === "open") {
@@ -727,6 +733,7 @@ async function start() {
   });
   app.on("window-all-closed", () => app.quit());
   await app.whenReady();
+  if (process.platform === "linux") Menu.setApplicationMenu(null);
   if (instance) await createWindow(instance, release, Boolean(npmRepository && !release));
   else {
     app.dock?.setIcon(join(__dirname, "../branding/morka-icon.png"));

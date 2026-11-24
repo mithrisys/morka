@@ -24,7 +24,9 @@ Grab the desktop preview from [GitHub Releases](https://github.com/mithrisys/mor
 | --- | --- |
 | macOS · Apple Silicon | Open the DMG and drag Morka into Applications. |
 | Windows · x64 and ARM64 | Run the setup executable for your architecture. |
-| Linux · x64 and ARM64 | Extract the tarball for your architecture and run `./morka/morka` in a graphical desktop session. |
+| Linux · x64 and ARM64 | Install the `.deb` on Debian or Ubuntu with `sudo apt install ./morka-*.deb`, or the `.rpm` on Fedora with `sudo dnf install ./morka-*.rpm`. Open **Morka** from the application menu. |
+
+The Linux tarball remains available for portable use on systems that permit Electron's sandbox. On Ubuntu 24.04 and newer, use the `.deb` to configure the app's AppArmor profile at installation. All Linux formats include Node.js and npm.
 
 Each release provides `SHA256SUMS.txt` and notes on platform support, signing, and upgrades.
 

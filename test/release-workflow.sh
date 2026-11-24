@@ -31,7 +31,7 @@ done
 
 # Exercise the real release steps against a local GitHub CLI double.
 mkdir downloads metadata
-for suffix in macOS-arm64.dmg Windows-x64-Setup.exe Windows-arm64-Setup.exe Linux-x64.tar.gz Linux-arm64.tar.gz; do
+for suffix in macOS-arm64.dmg Windows-{x64,arm64}-Setup.exe Linux-{x64,arm64}.{tar.gz,deb,rpm}; do
   printf '%s' "$suffix" > "downloads/morka-${RELEASE_TAG#v}-$suffix"
 done
 (cd "$root" && node scripts/releases/metadata.mjs "$work/downloads" "$work/metadata/release-notes.md")
@@ -49,7 +49,7 @@ gh() {
       test -f draft-state || return 1
       if [[ "$*" == *"--jq .isDraft"* ]]; then cat draft-state; else jq -n --argjson draft "$(cat draft-state)" '{isDraft: $draft}'; fi ;;
     create) test ! -f draft-state && [[ "$*" == *"--verify-tag --draft"* ]] && echo true > draft-state ;;
-    upload) test "$(cat draft-state)" = true && test "$#" -eq 10 ;;
+    upload) test "$(cat draft-state)" = true && test "$#" -eq 14 ;;
     edit) if [[ "$*" == *"--draft=false"* ]]; then echo false > draft-state; fi ;;
     *) return 1 ;;
   esac

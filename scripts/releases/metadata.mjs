@@ -15,19 +15,23 @@ export function releaseNotes(changelog, version) {
 }
 
 export function desktopAssets(version) {
+  const linux = arch => {
+    const prefix = `morka-${version}-Linux-${arch}`;
+    return { tar: `${prefix}.tar.gz`, deb: `${prefix}.deb`, rpm: `${prefix}.rpm` };
+  };
   return {
-    "darwin-arm64": `morka-${version}-macOS-arm64.dmg`,
-    "win32-x64": `morka-${version}-Windows-x64-Setup.exe`,
-    "win32-arm64": `morka-${version}-Windows-arm64-Setup.exe`,
-    "linux-x64": `morka-${version}-Linux-x64.tar.gz`,
-    "linux-arm64": `morka-${version}-Linux-arm64.tar.gz`,
+    "darwin-arm64": { dmg: `morka-${version}-macOS-arm64.dmg` },
+    "win32-x64": { nsis: `morka-${version}-Windows-x64-Setup.exe` },
+    "win32-arm64": { nsis: `morka-${version}-Windows-arm64-Setup.exe` },
+    "linux-x64": linux("x64"),
+    "linux-arm64": linux("arm64"),
   };
 }
 
 export async function writeChecksums(directory, version) {
-  const expected = Object.values(desktopAssets(version)).sort();
+  const expected = Object.values(desktopAssets(version)).flatMap(Object.values).sort();
   const entries = (await readdir(directory)).filter(name => name !== "SHA256SUMS.txt").sort();
-  if (JSON.stringify(entries) !== JSON.stringify(expected)) throw new Error("Expected exactly one download for each supported desktop platform and architecture.");
+  if (JSON.stringify(entries) !== JSON.stringify(expected)) throw new Error("Expected exactly the downloads for each supported desktop target and package format.");
   const lines = [];
   for (const name of expected) {
     const hash = createHash("sha256");

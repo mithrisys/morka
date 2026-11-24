@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { EventEmitter, once } = require("node:events");
-const { app, dialog } = require("electron");
+const { app, dialog, Menu } = require("electron");
 
 async function testLauncher() {
   app.setPath("appData", process.env.MORKA_PREVIEW_TEST_DIR);
@@ -13,6 +13,10 @@ async function testLauncher() {
   const created = once(app, "browser-window-created");
   require("../dist/electron/main.js");
   const [, window] = await created;
+  if (process.platform === "linux") {
+    assert.equal(Menu.getApplicationMenu(), null);
+    assert.equal(window.isMenuBarVisible(), false);
+  }
   const contents = window.webContents;
   await once(contents, "did-finish-load");
   const evaluate = script => contents.executeJavaScript(script);

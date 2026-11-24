@@ -16,6 +16,7 @@ type LaunchConfig = {
 };
 
 const launchFile = "morka-launch.json";
+export const linuxProjectArgument = "--morka-project=";
 const bootstrap = `
 const { join } = require("node:path");
 const launch = require("./${launchFile}");
@@ -171,9 +172,38 @@ function desktopEntry(name: string, executable: string, directory: string, icon:
   ].join("\n");
 }
 
+async function writeLinuxShortcut(name: string, profile: string, argument: string, icon: string) {
+  const configured = process.env.XDG_DATA_HOME;
+  const data = configured && isAbsolute(configured) ? configured : join(app.getPath("home"), ".local", "share");
+  const entry = join(data, "applications", `local.morka.project.${profile}.desktop`);
+  await writeTextAtomically(entry, desktopEntry(name, process.execPath, argument, icon));
+  return entry;
+}
+
+async function launchDesktopApp(args: string[], cwd: string) {
+  const child = spawn(process.execPath, args, { cwd, detached: true, stdio: "ignore", windowsHide: true });
+  await new Promise<void>((resolve, reject) => {
+    child.once("spawn", resolve);
+    child.once("error", reject);
+  });
+  child.unref();
+}
+
+export async function installPackagedLinuxProject(repository: string, spec: AppRelease) {
+  const name = portableAppName(spec.name);
+  const library = appsDirectory(app.getPath("appData"));
+  const profile = repositoryProfileId(spec, repository);
+  const directory = join(library, "desktop", profile);
+  await mkdir(directory, { recursive: true });
+  const icon = join(directory, "icon.png");
+  await writeFile(icon, projectIcon(spec.iconColor).resize({ width: 256, height: 256 }).toPNG());
+  const argument = linuxProjectArgument + repository;
+  await writeLinuxShortcut(name, profile, argument, icon);
+  await launchDesktopApp([argument], app.getAppPath());
+}
+
 export async function installDesktopApp(repository: string, spec: AppRelease, open: boolean) {
   const name = portableAppName(spec.name);
-  const home = app.getPath("home");
   const library = appsDirectory(app.getPath("appData"));
   const toolchain = process.platform === "darwin" ? process.env.MORKA_INSTALL_TOOLCHAIN : undefined;
   const node = process.env.MORKA_LOCAL_NODE;
@@ -183,7 +213,6 @@ export async function installDesktopApp(repository: string, spec: AppRelease, op
     electron: process.versions.electron ?? "", bundledNode: Boolean(toolchain),
     toolchainRevision: toolchain ? await readFile(join(toolchain, "toolchain.json"), "utf8") : undefined };
   let entry: string;
-  const executable = process.execPath;
   let args: string[] = [];
   if (process.platform === "darwin") {
     entry = await installMacApp(name, config, library, toolchain);
@@ -197,10 +226,7 @@ export async function installDesktopApp(repository: string, spec: AppRelease, op
     if (process.platform === "win32") {
       entry = await writeWindowsShortcut(directory, name, `"${directory}"`, repository, icon);
     } else {
-      const configured = process.env.XDG_DATA_HOME;
-      const data = configured && isAbsolute(configured) ? configured : join(home, ".local", "share");
-      entry = join(data, "applications", `local.morka.project.${config.profile}.desktop`);
-      await writeTextAtomically(entry, desktopEntry(name, executable, directory, icon));
+      entry = await writeLinuxShortcut(name, config.profile, directory, icon);
     }
   } else {
     throw new Error("App installation is available on macOS, Windows, and Linux.");
@@ -212,10 +238,5 @@ export async function installDesktopApp(repository: string, spec: AppRelease, op
     await promisify(execFile)("/usr/bin/open", [entry]);
     return;
   }
-  const child = spawn(executable, args, { cwd: repository, detached: true, stdio: "ignore", windowsHide: true });
-  await new Promise<void>((resolve, reject) => {
-    child.once("spawn", resolve);
-    child.once("error", reject);
-  });
-  child.unref();
+  await launchDesktopApp(args, repository);
 }

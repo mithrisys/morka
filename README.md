@@ -23,8 +23,8 @@ Grab the desktop preview from [GitHub Releases](https://github.com/mithrisys/mor
 | Platform | Install the desktop preview |
 | --- | --- |
 | macOS · Apple Silicon | Open the DMG and drag Morka into Applications. |
-| Windows · x64 | Run the setup executable. |
-| Linux · x64 | Extract the tarball and run `./morka/morka` in a graphical desktop session. |
+| Windows · x64 and ARM64 | Run the setup executable for your architecture. |
+| Linux · x64 and ARM64 | Extract the tarball for your architecture and run `./morka/morka` in a graphical desktop session. |
 
 Each release provides `SHA256SUMS.txt` and notes on platform support, signing, and upgrades.
 

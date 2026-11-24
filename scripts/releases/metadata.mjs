@@ -16,16 +16,18 @@ export function releaseNotes(changelog, version) {
 
 export function desktopAssets(version) {
   return {
-    darwin: `morka-${version}-macOS-arm64.dmg`,
-    win32: `morka-${version}-Windows-x64-Setup.exe`,
-    linux: `morka-${version}-Linux-x64.tar.gz`,
+    "darwin-arm64": `morka-${version}-macOS-arm64.dmg`,
+    "win32-x64": `morka-${version}-Windows-x64-Setup.exe`,
+    "win32-arm64": `morka-${version}-Windows-arm64-Setup.exe`,
+    "linux-x64": `morka-${version}-Linux-x64.tar.gz`,
+    "linux-arm64": `morka-${version}-Linux-arm64.tar.gz`,
   };
 }
 
 export async function writeChecksums(directory, version) {
   const expected = Object.values(desktopAssets(version)).sort();
   const entries = (await readdir(directory)).filter(name => name !== "SHA256SUMS.txt").sort();
-  if (JSON.stringify(entries) !== JSON.stringify(expected)) throw new Error("Expected exactly one download for each desktop platform.");
+  if (JSON.stringify(entries) !== JSON.stringify(expected)) throw new Error("Expected exactly one download for each supported desktop platform and architecture.");
   const lines = [];
   for (const name of expected) {
     const hash = createHash("sha256");

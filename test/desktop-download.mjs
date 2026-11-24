@@ -27,7 +27,11 @@ try {
   }
   const appRoot = join(resources, "app");
   const tools = await bundledToolchain(join(appRoot, "dist/toolchain"));
+  assert.equal(execFileSync(tools.node, ["-p", "process.arch"], { encoding: "utf8" }).trim(), process.arch);
   assert.equal(execFileSync(tools.node, [tools.npm, "--version"], { encoding: "utf8" }).trim(), JSON.parse(tools.identity).npm);
+  assert.equal(execFileSync(executable, ["-p", "process.arch"], {
+    encoding: "utf8", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, timeout: 10_000,
+  }).trim(), process.arch, "The packaged Electron binary must match the runner architecture");
   const files = await snapshot(join(appRoot, "dist/app-runtime/starter"));
   files.set(entryFile, jsonFile(starterManifest));
   const repo = await materializeRepository(work, spec, files, join(resources, bundledKit), await readFile(join(appRoot, "dist/branding/Morka.icns")));

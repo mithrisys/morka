@@ -126,6 +126,7 @@ export async function writeDesktopResources(engine: string, resources: string, n
     productName: name,
     version: metadata.version,
     main: "dist/electron/main.js",
+    ...(process.platform === "linux" ? { desktopName: metadata.desktopName } : {}),
   }));
   const dist = join(engine, "dist");
   await cp(dist, join(app, "dist"), { recursive: true, filter: path => ![join(dist, "npm"), join(dist, "archives"), join(dist, "toolchain")].includes(path) });

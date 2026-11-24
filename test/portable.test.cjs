@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const { execFile } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
+const { EventEmitter } = require("node:events");
 const { readFileSync, writeFileSync } = require("node:fs");
 const { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } = require("node:fs/promises");
 const { createRequire } = require("node:module");
@@ -156,6 +157,39 @@ for (const platform of ["linux", "win32"]) {
     }
   }));
 }
+
+test("a packaged Linux project opens with the desktop host covered by the installed sandbox profile", () => fixture(async temp => {
+  const module = { exports: {} };
+  const path = join(root, "dist/instances/desktop.js");
+  const local = createRequire(path);
+  const dataHome = join(temp, "XDG Data");
+  const repository = join(temp, "Shared % Project");
+  const executable = "/opt/Morka/morka";
+  const spec = { version: 1, id: randomUUID(), name: "Shared Project", iconColor: 0 };
+  const profile = repositoryProfileId(spec, repository);
+  const launches = [];
+  const mocks = {
+    "node:child_process": { spawn(command, args, options) {
+      launches.push({ command, args: Array.from(args), cwd: options.cwd });
+      const child = new EventEmitter();
+      child.unref = () => {};
+      queueMicrotask(() => child.emit("spawn"));
+      return child;
+    } },
+    electron: { app: { getPath: () => temp, getAppPath: () => "/opt/Morka/resources/app" } },
+    "./macos": { projectIcon: () => ({ resize: () => ({ toPNG: () => Buffer.from("icon") }) }) },
+    "./distribution": {},
+    "original-fs": require("node:fs"),
+  };
+  runInNewContext(await readFile(path, "utf8"), {
+    module, exports: module.exports, require: name => mocks[name] ?? local(name), Buffer,
+    process: { platform: "linux", execPath: executable, env: { XDG_DATA_HOME: dataHome } }, console: { log() {} },
+  });
+  await module.exports.installPackagedLinuxProject(repository, spec);
+  const desktop = await readFile(join(dataHome, "applications", `local.morka.project.${profile}.desktop`), "utf8");
+  assert.match(desktop, /^Exec="\/opt\/Morka\/morka" "--morka-project=.*Shared %% Project"$/m);
+  assert.deepEqual(launches, [{ command: executable, args: [`--morka-project=${repository}`], cwd: "/opt/Morka/resources/app" }]);
+}));
 
 test("opening an installed macOS project hands the bundle to Launch Services", () => fixture(async temp => {
   const module = { exports: {} };

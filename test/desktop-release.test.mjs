@@ -15,11 +15,19 @@ test("release notes select one exact dated version and retain its subsections", 
 
 test("desktop downloads select the asset by platform and architecture", () => {
   assert.deepEqual(desktopAssets("1.2.3"), {
-    "darwin-arm64": "morka-1.2.3-macOS-arm64.dmg",
-    "win32-x64": "morka-1.2.3-Windows-x64-Setup.exe",
-    "win32-arm64": "morka-1.2.3-Windows-arm64-Setup.exe",
-    "linux-x64": "morka-1.2.3-Linux-x64.tar.gz",
-    "linux-arm64": "morka-1.2.3-Linux-arm64.tar.gz",
+    "darwin-arm64": { dmg: "morka-1.2.3-macOS-arm64.dmg" },
+    "win32-x64": { nsis: "morka-1.2.3-Windows-x64-Setup.exe" },
+    "win32-arm64": { nsis: "morka-1.2.3-Windows-arm64-Setup.exe" },
+    "linux-x64": {
+      tar: "morka-1.2.3-Linux-x64.tar.gz",
+      deb: "morka-1.2.3-Linux-x64.deb",
+      rpm: "morka-1.2.3-Linux-x64.rpm",
+    },
+    "linux-arm64": {
+      tar: "morka-1.2.3-Linux-arm64.tar.gz",
+      deb: "morka-1.2.3-Linux-arm64.deb",
+      rpm: "morka-1.2.3-Linux-arm64.rpm",
+    },
   });
 });
 
@@ -27,7 +35,11 @@ test("checksums require the exact desktop downloads for all supported architectu
   const dir = await mkdtemp(join(tmpdir(), "morka-checksums-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const files = [
+    "morka-1.2.3-Linux-arm64.deb",
+    "morka-1.2.3-Linux-arm64.rpm",
     "morka-1.2.3-Linux-arm64.tar.gz",
+    "morka-1.2.3-Linux-x64.deb",
+    "morka-1.2.3-Linux-x64.rpm",
     "morka-1.2.3-Linux-x64.tar.gz",
     "morka-1.2.3-Windows-arm64-Setup.exe",
     "morka-1.2.3-Windows-x64-Setup.exe",

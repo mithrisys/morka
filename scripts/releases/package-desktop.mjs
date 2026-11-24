@@ -10,6 +10,8 @@ const { version } = JSON.parse(await readFile("package.json", "utf8"));
 const target = `${process.platform}-${process.arch}`;
 const assets = desktopAssets(version)[target];
 if (!assets) throw new Error(`No release target for ${target}.`);
+// Linux installers generate desktop entries and icons for users other than the builder.
+if (process.platform === "linux") process.umask(0o022);
 const output = resolve("release/downloads");
 await mkdir(output, { recursive: true });
 const stage = await mkdtemp(resolve("release/.desktop-"));
@@ -69,8 +71,9 @@ try {
           appId: "local.morka.desktop", productName: "Morka",
           directories: { output: stage },
           linux: {
-            executableName: "morka", icon: resolve("host/branding/morka-icon.png"),
+            executableName: "morka", icon: join(resources, "app/dist/branding/morka-icon.png"),
             category: "Development", syncDesktopName: true,
+            desktop: { entry: { Icon: "/opt/Morka/resources/app/dist/branding/morka-icon.png" } },
             maintainer: "Morka <74207454+mithrisys@users.noreply.github.com>",
           },
           deb: {

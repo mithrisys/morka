@@ -93,7 +93,7 @@ jobs:
         run: |
           sudo apt-get install -y --no-install-recommends ./release/downloads/*.deb
           test "$(dpkg-query -W -f='${Architecture}' morka)" = "$(dpkg --print-architecture)"
-          test -f /usr/share/applications/morka.desktop
+          bash test/desktop-menu.sh /
           xvfb-run -a node test/desktop-download.mjs /usr/bin/morka /opt/Morka/resources
       - name: Extract and test the RPM package
         if: runner.os == 'Linux'
@@ -103,7 +103,7 @@ jobs:
           test "$(rpm -qp --queryformat '%{NAME}:%{ARCH}' release/downloads/*.rpm)" = "morka:$rpm_arch"
           mkdir "$RUNNER_TEMP/rpm"
           rpm2cpio release/downloads/*.rpm | (umask 022; cd "$RUNNER_TEMP/rpm" && cpio -idm --quiet)
-          test -f "$RUNNER_TEMP/rpm/usr/share/applications/morka.desktop"
+          bash test/desktop-menu.sh "$RUNNER_TEMP/rpm"
           xvfb-run -a node test/desktop-download.mjs "$RUNNER_TEMP/rpm/opt/Morka/morka" "$RUNNER_TEMP/rpm/opt/Morka/resources"
       - uses: actions/cache/save@v5
         if: inputs.commit != ''

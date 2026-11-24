@@ -10,7 +10,8 @@ export RELEASE_TAG="v$(node -p "require('./package.json').version")"
 ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).fetch("jobs").fetch("publish").fetch("steps").last.fetch("run")' \
   .github/workflows/release.yml > "$work/publish.sh"
 cd "$work"
-ln -s "$root/dist/archives" packages
+mkdir release
+ln -s "$root/dist/archives" release/canonical-kit
 
 # Simulate a missing registry version, then read back what npm would publish.
 curl() { printf '404'; }

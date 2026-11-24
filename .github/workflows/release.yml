@@ -53,12 +53,16 @@ jobs:
       - run: npm run check:versions
       - run: npm ci
       - run: npm run build -- --portable
-      - run: node scripts/releases/project-lock.mjs dist/archives/project-lock.json
-      - uses: actions/upload-artifact@v4
+      - name: Prepare the canonical release kit
+        run: |
+          mkdir -p release/canonical-kit
+          cp dist/archives/*.tgz release/canonical-kit/
+          node scripts/releases/project-lock.mjs release/canonical-kit/project-lock.json
+      - uses: actions/cache/save@v5
         with:
-          name: npm-packages
-          path: dist/archives/
-          if-no-files-found: error
+          path: release/canonical-kit
+          key: morka-release-${{ github.run_id }}-${{ github.run_attempt }}-npm
+          enableCrossOsArchive: true
 
   desktop:
     needs: prepare
@@ -67,7 +71,7 @@ jobs:
       commit: ${{ needs.prepare.outputs.commit }}
 
   draft:
-    needs: desktop
+    needs: [prepare, desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -75,15 +79,50 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
         with:
-          pattern: desktop-*
-          merge-multiple: true
-          path: downloads
-      - uses: actions/download-artifact@v4
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
         with:
-          name: release-metadata
-          path: metadata
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - uses: actions/cache/restore@v5
+        with:
+          path: release/downloads
+          key: morka-release-${{ github.run_id }}-${{ github.run_attempt }}-desktop-macOS-arm64
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v5
+        with:
+          path: release/downloads
+          key: morka-release-${{ github.run_id }}-${{ github.run_attempt }}-desktop-Windows-x64
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v5
+        with:
+          path: release/downloads
+          key: morka-release-${{ github.run_id }}-${{ github.run_attempt }}-desktop-Windows-arm64
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v5
+        with:
+          path: release/downloads
+          key: morka-release-${{ github.run_id }}-${{ github.run_attempt }}-desktop-Linux-x64
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v5
+        with:
+          path: release/downloads
+          key: morka-release-${{ github.run_id }}-${{ github.run_attempt }}-desktop-Linux-arm64
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - name: Verify release notes and downloads
+        run: |
+          mv release/downloads downloads
+          mkdir metadata
+          node scripts/releases/metadata.mjs downloads metadata/release-notes.md
+          mv downloads/SHA256SUMS.txt metadata/
       - name: Stage verified assets and notes
         run: |
           set -euo pipefail
@@ -113,15 +152,17 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/cache/restore@v5
         with:
-          name: npm-packages
-          path: packages
+          path: release/canonical-kit
+          key: morka-release-${{ github.run_id }}-${{ github.run_attempt }}-npm
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
       - name: Publish the runtime and packager
         run: |
           set -euo pipefail
           for component in runtime packager; do
-            file="./packages/morka-${component}.tgz"
+            file="./release/canonical-kit/morka-${component}.tgz"
             name="@morkaai/$component"
             version="${RELEASE_TAG#v}"
             tar -xOf "$file" package/package.json | jq -e --arg name "$name" --arg version "$version" '.name == $name and .version == $version' > /dev/null

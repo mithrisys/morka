@@ -4,7 +4,9 @@ Release entries describe user-visible changes and upgrade steps, newest first.
 
 ## 0.3.0-beta.3 (2026-11-24)
 
-New projects include accessible form and layout styles and fast Node test scripts. Editing agents can consult focused guidance for UI design, engineering, runtime services and AI actions while following each project’s conventions.
+Morka now ships native ARM64 desktop downloads for Windows and Linux alongside the x64 downloads. Each includes Node.js, npm and Electron for its architecture.
+
+New projects include accessible form and layout styles and fast Node test scripts. Editing agents can consult focused guidance for UI design, engineering, runtime services and AI actions while following each project’s conventions. Desktop downloads pin new project checkouts to the version of the runtime and packager published with this beta.
 
 ### Workflow review
 

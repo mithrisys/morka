@@ -2,6 +2,22 @@
 
 Release entries describe user-visible changes and upgrade steps, newest first.
 
+## 0.3.0-beta.4 (2026-11-24)
+
+Linux now has DEB and RPM installers for x64 and ARM64 alongside the portable archives. The installers add Morka to the application menu with its own icon. On Ubuntu 24.04 and newer, the DEB sets up the AppArmor profile for Electron's sandbox.
+
+On Windows, Morka uses its own executable icon and hides Electron's default menu. Creating a project from the Windows or Linux desktop app uses the bundled runtime, so it no longer needs to download a separate Electron. Windows projects can live on shared folders and open from their Start menu shortcuts.
+
+### Upgrading
+
+Quit Morka and install the download for your platform and architecture. Use `sudo apt install ./morka-*.deb` on Debian or Ubuntu, or `sudo dnf install ./morka-*.rpm` on Fedora. You can open existing projects from their folders. To update an existing npm checkout, pin both `@morkaai/runtime` and `@morkaai/packager` to `0.3.0-beta.4` and commit the updated lockfile.
+
+### Known limitations
+
+The macOS download uses an ad-hoc signature. The Windows installer lacks an Authenticode publisher signature. The release workflow installs and tests the DEB on Ubuntu, and checks the RPM by extracting and running it on Ubuntu. Native Fedora installation has yet to be verified.
+
+[Full changelog](https://github.com/mithrisys/morka/compare/v0.3.0-beta.3...v0.3.0-beta.4)
+
 ## 0.3.0-beta.3 (2026-11-24)
 
 Morka now ships native ARM64 desktop downloads for Windows and Linux alongside the x64 downloads. Each includes Node.js, npm and Electron for its architecture.

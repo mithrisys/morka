@@ -16,7 +16,7 @@ type LaunchConfig = {
 };
 
 const launchFile = "morka-launch.json";
-export const linuxProjectArgument = "--morka-project=";
+export const desktopProjectArgument = "--morka-project=";
 const bootstrap = `
 const { join } = require("node:path");
 const launch = require("./${launchFile}");
@@ -132,6 +132,14 @@ function iconFile(png: Buffer) {
   return Buffer.concat([header, png]);
 }
 
+async function writeProjectIcon(directory: string, spec: AppRelease) {
+  const png = projectIcon(spec.iconColor).resize({ width: 256, height: 256 }).toPNG();
+  const windows = process.platform === "win32";
+  const icon = join(directory, windows ? "icon.ico" : "icon.png");
+  await writeFile(icon, windows ? iconFile(png) : png);
+  return icon;
+}
+
 async function writeWindowsShortcut(directory: string, name: string, args: string, cwd: string, icon: string) {
   const menu = join(app.getPath("appData"), "Microsoft", "Windows", "Start Menu", "Programs", "Morka");
   const shortcut = join(menu, `${name}.lnk`);
@@ -152,6 +160,27 @@ async function writeWindowsShortcut(directory: string, name: string, args: strin
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
+}
+
+async function launchDesktopApp(args: string[], cwd: string) {
+  const child = spawn(process.execPath, args, { cwd, detached: true, stdio: "ignore", windowsHide: true });
+  await new Promise<void>((resolve, reject) => {
+    child.once("spawn", resolve);
+    child.once("error", reject);
+  });
+  child.unref();
+}
+
+export async function installWindowsProject(repository: string, spec: AppRelease) {
+  const name = portableAppName(spec.name);
+  const library = appsDirectory(app.getPath("appData"));
+  const directory = join(library, "desktop", repositoryProfileId(spec, repository));
+  await mkdir(directory, { recursive: true });
+  const icon = await writeProjectIcon(directory, spec);
+  const argument = desktopProjectArgument + repository;
+  const cwd = app.getAppPath();
+  await writeWindowsShortcut(directory, name, `"${argument}"`, cwd, icon);
+  await launchDesktopApp([argument], cwd);
 }
 
 function desktopValue(value: string) {
@@ -180,24 +209,14 @@ async function writeLinuxShortcut(name: string, profile: string, argument: strin
   return entry;
 }
 
-async function launchDesktopApp(args: string[], cwd: string) {
-  const child = spawn(process.execPath, args, { cwd, detached: true, stdio: "ignore", windowsHide: true });
-  await new Promise<void>((resolve, reject) => {
-    child.once("spawn", resolve);
-    child.once("error", reject);
-  });
-  child.unref();
-}
-
 export async function installPackagedLinuxProject(repository: string, spec: AppRelease) {
   const name = portableAppName(spec.name);
   const library = appsDirectory(app.getPath("appData"));
   const profile = repositoryProfileId(spec, repository);
   const directory = join(library, "desktop", profile);
   await mkdir(directory, { recursive: true });
-  const icon = join(directory, "icon.png");
-  await writeFile(icon, projectIcon(spec.iconColor).resize({ width: 256, height: 256 }).toPNG());
-  const argument = linuxProjectArgument + repository;
+  const icon = await writeProjectIcon(directory, spec);
+  const argument = desktopProjectArgument + repository;
   await writeLinuxShortcut(name, profile, argument, icon);
   await launchDesktopApp([argument], app.getAppPath());
 }
@@ -219,9 +238,7 @@ export async function installDesktopApp(repository: string, spec: AppRelease, op
   } else if (process.platform === "win32" || process.platform === "linux") {
     const directory = join(library, "desktop", config.profile);
     await writeBootstrap(directory, name, config);
-    const png = projectIcon(spec.iconColor).resize({ width: 256, height: 256 }).toPNG();
-    const icon = join(directory, process.platform === "win32" ? "icon.ico" : "icon.png");
-    await writeFile(icon, process.platform === "win32" ? iconFile(png) : png);
+    const icon = await writeProjectIcon(directory, spec);
     args = [directory];
     if (process.platform === "win32") {
       entry = await writeWindowsShortcut(directory, name, `"${directory}"`, repository, icon);

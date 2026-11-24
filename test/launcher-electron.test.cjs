@@ -13,8 +13,8 @@ async function testLauncher() {
   const created = once(app, "browser-window-created");
   require("../dist/electron/main.js");
   const [, window] = await created;
-  if (process.platform === "linux") {
-    assert.equal(Menu.getApplicationMenu(), null);
+  if (process.platform === "linux" || process.platform === "win32") {
+    assert.equal(Menu.getApplicationMenu(), null, "The launcher must remove Electron's default menu");
     assert.equal(window.isMenuBarVisible(), false);
   }
   const contents = window.webContents;

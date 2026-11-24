@@ -191,6 +191,46 @@ test("a packaged Linux project opens with the desktop host covered by the instal
   assert.deepEqual(launches, [{ command: executable, args: [`--morka-project=${repository}`], cwd: "/opt/Morka/resources/app" }]);
 }));
 
+test("the packaged Windows host installs a shared-folder project without a project Electron", () => fixture(async temp => {
+  const module = { exports: {} };
+  const path = join(root, "dist/instances/desktop.js");
+  const local = createRequire(path);
+  const executable = join(temp, "Program Files", "Morka.exe");
+  const appPath = join(temp, "Program Files", "resources", "app");
+  const repository = String.raw`\\Mac\Home\Downloads\Shared App`;
+  const spec = { version: 1, id: randomUUID(), name: "Shared App", iconColor: 0 };
+  const launches = [];
+  const mocks = {
+    "node:child_process": { spawn(command, args, options) {
+      launches.push({ command, args: Array.from(args), cwd: options.cwd });
+      const child = new EventEmitter();
+      child.unref = () => {};
+      queueMicrotask(() => child.emit("spawn"));
+      return child;
+    } },
+    electron: {
+      app: { getPath: () => temp, getAppPath: () => appPath },
+      shell: { writeShortcutLink(file, options) { writeFileSync(file, JSON.stringify(options)); return true; } },
+    },
+    "./macos": { projectIcon: () => ({ resize: () => ({ toPNG: () => Buffer.from("icon") }) }) },
+    "./distribution": {},
+    "original-fs": require("node:fs"),
+  };
+  runInNewContext(await readFile(path, "utf8"), {
+    module, exports: module.exports, require: name => mocks[name] ?? local(name), Buffer,
+    process: { platform: "win32", execPath: executable, env: {} },
+    console: { log() {} },
+  });
+  await module.exports.installWindowsProject(repository, spec);
+  const argument = `--morka-project=${repository}`;
+  const shortcut = join(temp, "Microsoft", "Windows", "Start Menu", "Programs", "Morka", "Shared App.lnk");
+  const link = JSON.parse(await readFile(shortcut, "utf8"));
+  assert.equal(link.target, executable);
+  assert.equal(link.args, `"${argument}"`);
+  assert.equal(link.cwd, appPath);
+  assert.deepEqual(launches, [{ command: executable, args: [argument], cwd: appPath }]);
+}));
+
 test("opening an installed macOS project hands the bundle to Launch Services", () => fixture(async temp => {
   const module = { exports: {} };
   const path = join(root, "dist/instances/desktop.js");

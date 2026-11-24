@@ -91,14 +91,14 @@
         return;
       }
       if (create) {
-        if (result.openError) status.textContent = "Project created. Run npm run install:app in the project folder to retry. " + result.openError;
+        if (result.openError) status.textContent = "Project created. Use Open Project in Morka to open it. " + result.openError;
         else modal.close();
         return;
       }
       modal.close();
       if (!notice) return;
       notice.textContent = result.openError
-        ? "Project created. Run npm run install:app in the project folder to retry. " + result.openError
+        ? "Project created. Use Open Project in Morka to open it. " + result.openError
         : "Your app is ready in the system application menu.";
       notice.title = result.path;
       notice.hidden = false;

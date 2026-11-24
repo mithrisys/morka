@@ -45,6 +45,20 @@ try {
     await writeDesktopResources(process.cwd(), resources, "Morka", kit);
     const { build, Platform, Arch } = require("electron-builder");
     if (windows) {
+      const { convertIcon } = require("app-builder-lib/out/util/iconConverter");
+      const { editWindowsResources } = require("app-builder-lib/out/util/resEdit");
+      const { icons } = await convertIcon({
+        sources: [resolve("host/branding/morka-icon.png")], fallbackSources: [],
+        roots: [process.cwd()], format: "ico", outDir: join(stage, ".icon-ico"),
+      });
+      const iconPath = icons[0]?.file;
+      if (!iconPath) throw new Error("The Windows application icon could not be built.");
+      // electron-builder skips executable resource editing for prepackaged apps.
+      await editWindowsResources({
+        file: join(app, "Morka.exe"), iconPath,
+        versionStrings: { FileDescription: "Morka", ProductName: "Morka", OriginalFilename: "Morka.exe" },
+        fileVersion: version, productVersion: version.split("-")[0],
+      });
       await build({
         targets: Platform.WINDOWS.createTarget("nsis", Arch[process.arch]),
         prepackaged: app,
@@ -52,7 +66,7 @@ try {
         config: {
           appId: "local.morka.desktop", productName: "Morka",
           directories: { output: stage },
-          win: { icon: resolve("host/branding/morka-icon.png") },
+          win: { icon: iconPath },
           nsis: {
             artifactName: assets.nsis, oneClick: false, perMachine: false, allowElevation: false,
             multiLanguageInstaller: false, runAfterFinish: false,

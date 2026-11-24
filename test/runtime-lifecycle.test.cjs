@@ -67,6 +67,7 @@ async function harness(initial, options = {}) {
       ipcMain: { handle: (key, value) => handlers.set(key, value), removeHandler: key => handlers.delete(key) },
       dialog: { showMessageBox() { throw Error("Unexpected execution confirmation"); } } },
     "node:fs/promises": { realpath: async value => value, readFile: async () => "" },
+    "../instances/macos": { projectIcon: () => ({}) },
     "../instances/repository": require("../dist/instances/repository.js"),
     "../project/files": { entryFile: "morka.project.json", digest: require("../dist/project/files.js").digest,
       info: async path => options.saved && path.endsWith("active.json") ? { isFile: () => true } : undefined, snapshot: async () => current },

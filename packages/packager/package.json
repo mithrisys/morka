@@ -1,6 +1,6 @@
 {
   "name": "@morkaai/packager",
-  "version": "0.3.0-beta.3",
+  "version": "0.3.0-beta.4",
   "author": {
     "name": "Mehrdad Farrokhmanesh",
     "url": "https://github.com/mithrisys"
@@ -23,5 +23,5 @@
   "bin": { "morka-pack": "bin/morka-pack.cjs" },
   "files": ["bin"],
   "engines": { "node": ">=24" },
-  "peerDependencies": { "@morkaai/runtime": "0.3.0-beta.3" }
+  "peerDependencies": { "@morkaai/runtime": "0.3.0-beta.4" }
 }

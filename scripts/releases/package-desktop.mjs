@@ -7,9 +7,9 @@ import { desktopAssets } from "./metadata.mjs";
 const require = createRequire(import.meta.url);
 const { buildMacBundle, writeDesktopResources } = require("../../dist/instances/distribution.js");
 const { version } = JSON.parse(await readFile("package.json", "utf8"));
-const asset = desktopAssets(version)[process.platform];
-const arch = process.platform === "darwin" ? "arm64" : "x64";
-if (!asset || process.arch !== arch) throw new Error(`No release target for ${process.platform}-${process.arch}.`);
+const target = `${process.platform}-${process.arch}`;
+const asset = desktopAssets(version)[target];
+if (!asset) throw new Error(`No release target for ${target}.`);
 const output = resolve("release/downloads");
 await mkdir(output, { recursive: true });
 const stage = await mkdtemp(resolve("release/.desktop-"));
@@ -38,7 +38,7 @@ try {
     if (windows) {
       const { build, Platform, Arch } = require("electron-builder");
       await build({
-        targets: Platform.WINDOWS.createTarget("nsis", Arch.x64),
+        targets: Platform.WINDOWS.createTarget("nsis", Arch[process.arch]),
         prepackaged: app,
         publish: "never",
         config: {

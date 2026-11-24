@@ -25,11 +25,21 @@ permissions:
 
 jobs:
   build:
-    name: Package on ${{ matrix.os }}
+    name: Package on ${{ matrix.os }} (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, windows-2022, ubuntu-22.04]
+        include:
+          - os: macos-15
+            arch: arm64
+          - os: windows-2022
+            arch: x64
+          - os: windows-11-arm
+            arch: arm64
+          - os: ubuntu-22.04
+            arch: x64
+          - os: ubuntu-22.04-arm
+            arch: arm64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -40,6 +50,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
+          architecture: ${{ matrix.arch }}
           cache: npm
       - run: npm ci
       - run: npm run package:desktop
@@ -65,7 +76,7 @@ jobs:
           xvfb-run -a node test/desktop-download.mjs "$RUNNER_TEMP/morka/morka" "$RUNNER_TEMP/morka/resources"
       - uses: actions/upload-artifact@v4
         with:
-          name: desktop-${{ runner.os }}
+          name: desktop-${{ runner.os }}-${{ matrix.arch }}
           path: release/downloads/*
           if-no-files-found: error
           compression-level: 0

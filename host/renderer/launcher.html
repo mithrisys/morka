@@ -15,9 +15,26 @@
   <main id="morka-home" aria-label="Morka">
     <canvas aria-hidden="true"></canvas>
     <button type="button" id="new-app" aria-label="Swipe right or press Enter to create an app" aria-describedby="birth-caption" aria-haspopup="dialog"></button>
-    <p class="instruction" id="birth-caption">swipe to born another <span>morka</span></p>
-    <button type="button" id="open-project" class="app-button">Open Project…</button>
-    <p id="open-project-status" role="status" hidden></p>
+    <div id="launcher-caption">
+      <p id="birth-caption">swipe to born another <span>morka</span></p>
+      <button type="button" id="wake-project" aria-haspopup="dialog">wake up a morka…</button>
+    </div>
   </main>
+  <dialog class="app-setup" id="wake-dialog" aria-labelledby="wake-title">
+    <form>
+      <h2 id="wake-title">Wake up a morka</h2>
+      <div class="wake-pickers">
+        <button type="button" class="app-button" id="wake-folder" autofocus>Choose Folder…</button>
+        <button type="button" class="app-button" id="wake-archive">Choose Archive…</button>
+      </div>
+      <label for="wake-git-url">Git URL</label>
+      <input id="wake-git-url" type="text" placeholder="https://example.com/your-morka.git" maxlength="2048" spellcheck="false" required>
+      <span id="wake-status" role="status" hidden></span>
+      <div class="setup-actions">
+        <button type="button" class="app-button" id="wake-cancel">Cancel</button>
+        <button type="submit" class="app-button primary">Clone and Launch</button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>

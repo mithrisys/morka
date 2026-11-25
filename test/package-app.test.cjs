@@ -43,6 +43,8 @@ const {snapshot}=require('../dist/project/files.js');
     const verify=spawnSync('/usr/bin/codesign',['--verify','--deep','--strict',bundle],{encoding:'utf8'});
     assert.equal(verify.status,0,verify.stderr);
     const packagedRequire=createRequire(join(resources,'app/package.json'));
+    const {readProjectCheckout}=packagedRequire('./dist/instances/project-import.js');
+    assert.deepEqual((await readProjectCheckout(repository)).spec,spec);
     const {ManagedRuntime}=packagedRequire('./dist/project/managed-runtime.js');
     const {readManifest}=packagedRequire('./dist/project/project.js');
     const tools=packagedRequire('./dist/project/toolchain.js');

@@ -1,11 +1,9 @@
 import { reviewScenario } from "./scenario-review";
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from "electron";
-import { execFile, spawn } from "node:child_process";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import { mkdirSync, statSync } from "node:fs";
 import { readFile, realpath } from "node:fs/promises";
-import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
-import { promisify } from "node:util";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { writeTextAtomically } from "../app-runtime/text-file";
 import { applyFiles, digest, entryFile, info, snapshot, type Files } from "../project/files";
@@ -13,7 +11,6 @@ import { compileProject, jsonFile, starterManifest, type Project } from "../proj
 import { LivePreview } from "../project/live-preview";
 import { ManagedRuntime } from "../project/managed-runtime";
 import type { Artifact } from "../project/packages";
-import { bundledToolchain } from "../project/toolchain";
 import { importShadow, readShadow, type Shadow } from "../project/shadows";
 import { installedShadowDescription, planShadowRemoval } from "../project/shadow-effects";
 import { AgentRunner } from "../agent-actions/runner";
@@ -21,8 +18,8 @@ import { ActionAccess } from "../agent-actions/access";
 import { ChatSessions } from "../agents/sessions";
 import { AgentRegistry } from "../agents/registry";
 import { makeIcon, projectIcon, type AppInstance } from "../instances/macos";
-import { prepareMacProjectExecutable } from "../instances/distribution";
-import { desktopProjectArgument, installDesktopApp, installPackagedLinuxProject, installWindowsProject } from "../instances/desktop";
+import { desktopProjectArgument, installDesktopApp, installRepository, openInstalledProject } from "../instances/desktop";
+import { importGitProject, importProjectArchive, projectArchiveExtensions, readProjectCheckout } from "../instances/project-import";
 import { appIcon, appName, appsDirectory, bundledKit, checkoutKey, materializeRepository, portableAppName, preparedRelease, readRelease, releaseFile, releaseProject, repositoryFile, repositoryProfileId, repositoryProject, type AppRelease } from "../instances/repository";
 import { containsPath, createShadowRepository, readShadowWorkspace, type ShadowWorkspace } from "../instances/shadow-repository";
 
@@ -35,38 +32,6 @@ function projectKey(directory: string) {
 
 function kitDirectory() {
   return process.env.MORKA_NPM_KIT || (app.isPackaged ? join(process.resourcesPath, bundledKit) : join(__dirname, "../npm"));
-}
-
-async function openRepository(directory: string) {
-  const repository = dirname(await repositoryProject(directory));
-  const spec = readRelease(repositoryFile(repository, "release.json"));
-  const executable = process.platform === "darwin"
-    ? await prepareMacProjectExecutable(process.execPath, app.getPath("appData"), repository, spec)
-    : process.execPath;
-  const env: NodeJS.ProcessEnv = { ...process.env, MORKA_NPM_REPOSITORY: repository };
-  delete env.ELECTRON_RUN_AS_NODE;
-  const child = spawn(executable, app.isPackaged ? [] : [app.getAppPath()], {
-    cwd: app.getAppPath(), env, detached: true, stdio: "ignore", windowsHide: true,
-  });
-  await new Promise<void>((resolve, reject) => {
-    child.once("spawn", resolve);
-    child.once("error", reject);
-  });
-  child.unref();
-}
-
-async function installRepository(repository: string, spec: AppRelease) {
-  if (process.platform === "linux" && app.isPackaged) return installPackagedLinuxProject(repository, spec);
-  if (process.platform === "win32" && app.isPackaged) return installWindowsProject(repository, spec);
-  const toolchain = await bundledToolchain(process.env.MORKA_DESKTOP_TOOLCHAIN);
-  const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === "PATH") ?? "PATH";
-  await promisify(execFile)(toolchain.node, [repositoryFile(repository, "npm", "install-app.cjs"), "--open"], {
-    cwd: repository, windowsHide: true, maxBuffer: 4 * 1024 * 1024,
-    env: { ...process.env, npm_execpath: toolchain.npm,
-      [pathKey]: [dirname(toolchain.node), process.env[pathKey]].filter(Boolean).join(delimiter),
-      MORKA_INSTALLER_ENGINE: resolve(__dirname, "../.."),
-      MORKA_INSTALL_TOOLCHAIN: toolchain.system ? "" : toolchain.root },
-  });
 }
 
 function registerInstaller(
@@ -140,14 +105,37 @@ async function createLauncher() {
       if (!openError) app.quit();
     },
   });
-  ipcMain.handle("instance:open", async event => {
+  let waking = false;
+  ipcMain.handle("instance:wake", async (event, kind: unknown, gitUrl: unknown): Promise<{ error: string } | undefined> => {
     requireLauncher(event);
-    const choice = await dialog.showOpenDialog(window, { title: "Open a Morka project", properties: ["openDirectory"] });
-    if (choice.canceled || !choice.filePaths[0]) return;
-    await openRepository(choice.filePaths[0]);
-    setImmediate(() => app.quit());
+    if (waking) return;
+    waking = true;
+    try {
+      const library = appsDirectory(app.getPath("appData"));
+      let checkout;
+      if (kind === "git") checkout = await importGitProject(library, gitUrl);
+      else if (kind === "folder" || kind === "archive") {
+        const choice = await dialog.showOpenDialog(window, kind === "folder" ? {
+          title: "Choose a Morka project folder", properties: ["openDirectory"],
+        } : {
+          title: "Choose a Morka project archive", properties: ["openFile"],
+          filters: [{ name: "Project Archives", extensions: projectArchiveExtensions }],
+        });
+        const selected = choice.filePaths[0];
+        if (choice.canceled || !selected) return;
+        checkout = kind === "folder" ? await readProjectCheckout(selected) : await importProjectArchive(library, selected);
+      } else throw new Error("Choose a folder, archive, or Git URL.");
+      const { repository, spec } = checkout;
+      if (!await openInstalledProject(repository, spec)) await installRepository(repository, spec);
+      setImmediate(() => app.quit());
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      waking = false;
+    }
   });
-  window.once("closed", () => ipcMain.removeHandler("instance:open"));
+  window.on("close", event => { if (waking) event.preventDefault(); });
+  window.once("closed", () => ipcMain.removeHandler("instance:wake"));
   await window.loadFile(index);
 }
 

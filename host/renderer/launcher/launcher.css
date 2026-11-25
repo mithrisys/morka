@@ -35,19 +35,33 @@ body.launcher {
 }
 #morka-home[data-held="true"] #new-app { cursor: grabbing; }
 #new-app:focus-visible { outline-offset: 7px; }
-#birth-caption {
+#launcher-caption {
   position: absolute;
   width: 100%;
-  margin: 0;
   padding: 0 12px;
   text-align: center;
+}
+#birth-caption {
+  margin: 0;
   font: 800 clamp(23px, 4.6vw, 47px)/1.12 Lexend, sans-serif;
   letter-spacing: -.014em;
   color: #3d3347;
 }
 #birth-caption span { color: #6430a2; }
-#open-project { position: absolute; inset: auto 16px 16px auto; }
-#open-project-status { position: absolute; inset: auto 145px 14px 16px; margin: 0; font-size: 12px; }
+#wake-project {
+  margin-top: 6px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--accent);
+  font: 600 14px/1.4 system-ui, sans-serif;
+  text-decoration: underline;
+  text-underline-offset: .2em;
+  cursor: pointer;
+}
+#wake-project:hover { background: var(--accent-soft); }
+.wake-pickers { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
 .launcher .app-setup {
   border: 1px solid rgb(255 255 255 / 80%);
   border-radius: 20px;

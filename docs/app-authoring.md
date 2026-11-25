@@ -4,7 +4,9 @@ This guide covers the project contract, agent setup, packaging, and the managed 
 
 ## Work with a project repository
 
-Morka creates a Git repository for each app. **Open Project** opens an existing checkout, and **Clone** copies the app source into a new repository. Morka installs newly created apps for the current user. The same checkout shares its private app data, chats, and AI access settings across the system launcher, **Open Project**, and `npm start`.
+Morka creates a Git repository for each app. Choose **wake up a morka…** in the launcher to open a project folder, import a ZIP or TAR.GZ archive, or clone a Git URL. Morka installs the app for the current user if needed, opens it, and closes the launcher. Git imports require Git installed on your computer. Morka keeps imported checkouts locally under `Morka Apps/projects` in your application data folder and reuses the checkout when you select the same archive or Git URL again.
+
+In an open app, **Clone** copies the app source into a new repository. The same checkout shares its private app data, chats, and AI access settings across the system launcher, **wake up a morka…**, and `npm start`.
 
 On Windows and Linux, projects created in the installed Morka desktop app use Morka's executable and bundled runtime. Morka adds each project to the Start menu or application menu with its own icon and stores generated releases locally. On Windows, the project source can live in a shared folder.
 

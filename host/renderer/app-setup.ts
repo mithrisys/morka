@@ -3,20 +3,49 @@
   const create = document.querySelector<HTMLButtonElement>("#new-app");
   const clone = document.querySelector<HTMLButtonElement>("#clone-app");
   const notice = document.querySelector<HTMLElement>("#app-install-status");
-  const open = document.querySelector<HTMLButtonElement>("#open-project");
-  open?.addEventListener("click", async () => {
-    const status = document.querySelector<HTMLElement>("#open-project-status")!;
-    status.hidden = true;
-    open.disabled = true;
-    try {
-      await window.lab.openProject();
-    } catch (error) {
-      status.textContent = error instanceof Error ? error.message : String(error);
+  const wake = document.querySelector<HTMLButtonElement>("#wake-project");
+  if (wake) {
+    const dialog = document.querySelector<HTMLDialogElement>("#wake-dialog")!;
+    const form = dialog.querySelector("form")!;
+    const folder = dialog.querySelector<HTMLButtonElement>("#wake-folder")!;
+    const archive = dialog.querySelector<HTMLButtonElement>("#wake-archive")!;
+    const gitUrl = dialog.querySelector<HTMLInputElement>("#wake-git-url")!;
+    const cancel = dialog.querySelector<HTMLButtonElement>("#wake-cancel")!;
+    const status = dialog.querySelector<HTMLElement>("#wake-status")!;
+    const controls = Array.from(dialog.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, button"));
+    let waking = false;
+    async function wakeProject(kind: ProjectSourceKind) {
+      if (waking) return;
+      const focused = document.activeElement as HTMLElement | null;
+      waking = true;
+      for (const control of controls) control.disabled = true;
+      status.textContent = kind === "git" ? "Cloning and launching project…" : "Preparing project…";
       status.hidden = false;
-    } finally {
-      open.disabled = false;
+      try {
+        const result = await window.lab.wakeProject(kind, kind === "git" ? gitUrl.value : undefined);
+        if (result) status.textContent = result.error;
+        else status.hidden = true;
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : String(error);
+      } finally {
+        waking = false;
+        for (const control of controls) control.disabled = false;
+        focused?.focus();
+      }
     }
-  });
+    wake.addEventListener("click", () => {
+      status.hidden = true;
+      dialog.showModal();
+    });
+    folder.addEventListener("click", () => void wakeProject("folder"));
+    archive.addEventListener("click", () => void wakeProject("archive"));
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      void wakeProject("git");
+    });
+    cancel.addEventListener("click", () => dialog.close());
+    dialog.addEventListener("cancel", event => { if (waking) event.preventDefault(); });
+  }
   const modal = document.createElement("dialog");
   modal.className = "app-setup";
   modal.setAttribute("aria-labelledby", "app-setup-title");
@@ -91,14 +120,14 @@
         return;
       }
       if (create) {
-        if (result.openError) status.textContent = "Project created. Use Open Project in Morka to open it. " + result.openError;
+        if (result.openError) status.textContent = "Project created. Use “wake up a morka…” in Morka to open it. " + result.openError;
         else modal.close();
         return;
       }
       modal.close();
       if (!notice) return;
       notice.textContent = result.openError
-        ? "Project created. Use Open Project in Morka to open it. " + result.openError
+        ? "Project created. Use “wake up a morka…” in Morka to open it. " + result.openError
         : "Your app is ready in the system application menu.";
       notice.title = result.path;
       notice.hidden = false;

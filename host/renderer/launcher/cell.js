@@ -3,7 +3,7 @@
   const canvas = root.querySelector('canvas');
   const context = canvas.getContext('2d');
   const handle = root.querySelector('button');
-  const caption = root.querySelector('p');
+  const caption = document.getElementById('launcher-caption');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const clamp = (v, low, high) => Math.min(high, Math.max(low, v));
   const smooth = v => { const t = clamp(v,0,1); return t*t*(3-2*t); };
@@ -81,7 +81,7 @@
     raster.width=Math.ceil((travel+3.1)*radius*scale); raster.height=Math.ceil(2.6*radius*scale);
     image=rasterContext.createImageData(raster.width,raster.height); pixels=new Uint32Array(image.data.buffer);
     profile=new Float32Array(raster.width);
-    caption.style.top=(cy+radius+Math.min(63, width*.09))+'px'; draw();
+    caption.style.top=Math.min(cy+radius+Math.min(63, width*.09), height-caption.offsetHeight-14)+'px'; draw();
   }
 
   function shadow(x,y,rx,opacity) {

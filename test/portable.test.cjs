@@ -10,7 +10,9 @@ const { dirname, join, win32 } = require("node:path");
 const { test } = require("node:test");
 const { promisify } = require("node:util");
 const { runInNewContext } = require("node:vm");
+const tar = require("tar");
 const { ActionAccess } = require("../dist/agent-actions/access.js");
+const { importProjectArchive } = require("../dist/instances/project-import.js");
 const { materializeRepository, portableAppName, readRelease, repositoryProfileId } = require("../dist/instances/repository.js");
 const { entryFile, snapshot } = require("../dist/project/files.js");
 const { ManagedRuntime } = require("../dist/project/managed-runtime.js");
@@ -99,6 +101,23 @@ test("the npm entry point forwards the checkout and local Node to Electron witho
   assert.match(npm, /npm-cli\.js$/);
 }));
 
+test("a compressed tar checkout can be imported and invalid imports leave no partial project", () => fixture(async temp => {
+  const library = join(temp, "library");
+  const spec = { version: 1, id: randomUUID(), name: "Tar Project", iconColor: 0 };
+  const source = new Map([[entryFile, Buffer.from(jsonFile(starterManifest))]]);
+  const repository = await materializeRepository(temp, spec, source, join(root, "dist", "npm"), Buffer.from("icon"));
+  const archive = join(temp, "project.tar.gz");
+  await tar.create({ cwd: repository, file: archive, gzip: true }, ["app", ".morka", "package.json", "package-lock.json"]);
+  const imported = await importProjectArchive(library, archive);
+  assert.notEqual(imported.repository, repository);
+  assert.deepEqual(imported.spec, spec);
+  assert.deepEqual(await importProjectArchive(library, archive), imported);
+  const invalid = join(temp, "incomplete.tgz");
+  await tar.create({ cwd: repository, file: invalid, gzip: true }, ["app"]);
+  await assert.rejects(importProjectArchive(library, invalid), /one Morka project/);
+  assert.equal((await readdir(join(library, "projects"))).length, 1);
+}));
+
 for (const platform of ["linux", "win32"]) {
   test(`${platform} installation registers a menu entry for the same project profile`, () => fixture(async temp => {
     const module = { exports: {} };
@@ -176,7 +195,7 @@ test("a packaged Linux project opens with the desktop host covered by the instal
       queueMicrotask(() => child.emit("spawn"));
       return child;
     } },
-    electron: { app: { getPath: () => temp, getAppPath: () => "/opt/Morka/resources/app" } },
+    electron: { app: { isPackaged: true, getPath: () => temp, getAppPath: () => "/opt/Morka/resources/app" } },
     "./macos": { projectIcon: () => ({ resize: () => ({ toPNG: () => Buffer.from("icon") }) }) },
     "./distribution": {},
     "original-fs": require("node:fs"),
@@ -185,10 +204,13 @@ test("a packaged Linux project opens with the desktop host covered by the instal
     module, exports: module.exports, require: name => mocks[name] ?? local(name), Buffer,
     process: { platform: "linux", execPath: executable, env: { XDG_DATA_HOME: dataHome } }, console: { log() {} },
   });
-  await module.exports.installPackagedLinuxProject(repository, spec);
+  assert.equal(await module.exports.openInstalledProject(repository, spec), false);
+  await module.exports.installRepository(repository, spec);
   const desktop = await readFile(join(dataHome, "applications", `local.morka.project.${profile}.desktop`), "utf8");
   assert.match(desktop, /^Exec="\/opt\/Morka\/morka" "--morka-project=.*Shared %% Project"$/m);
-  assert.deepEqual(launches, [{ command: executable, args: [`--morka-project=${repository}`], cwd: "/opt/Morka/resources/app" }]);
+  assert.equal(await module.exports.openInstalledProject(repository, spec), true);
+  const launch = { command: executable, args: [`--morka-project=${repository}`], cwd: "/opt/Morka/resources/app" };
+  assert.deepEqual(launches, [launch, launch]);
 }));
 
 test("the packaged Windows host installs a shared-folder project without a project Electron", () => fixture(async temp => {
@@ -209,8 +231,11 @@ test("the packaged Windows host installs a shared-folder project without a proje
       return child;
     } },
     electron: {
-      app: { getPath: () => temp, getAppPath: () => appPath },
-      shell: { writeShortcutLink(file, options) { writeFileSync(file, JSON.stringify(options)); return true; } },
+      app: { isPackaged: true, getPath: () => temp, getAppPath: () => appPath },
+      shell: {
+        writeShortcutLink(file, options) { writeFileSync(file, JSON.stringify(options)); return true; },
+        readShortcutLink(file) { return JSON.parse(readFileSync(file)); },
+      },
     },
     "./macos": { projectIcon: () => ({ resize: () => ({ toPNG: () => Buffer.from("icon") }) }) },
     "./distribution": {},
@@ -221,14 +246,17 @@ test("the packaged Windows host installs a shared-folder project without a proje
     process: { platform: "win32", execPath: executable, env: {} },
     console: { log() {} },
   });
-  await module.exports.installWindowsProject(repository, spec);
+  assert.equal(await module.exports.openInstalledProject(repository, spec), false);
+  await module.exports.installRepository(repository, spec);
   const argument = `--morka-project=${repository}`;
   const shortcut = join(temp, "Microsoft", "Windows", "Start Menu", "Programs", "Morka", "Shared App.lnk");
   const link = JSON.parse(await readFile(shortcut, "utf8"));
   assert.equal(link.target, executable);
   assert.equal(link.args, `"${argument}"`);
   assert.equal(link.cwd, appPath);
-  assert.deepEqual(launches, [{ command: executable, args: [argument], cwd: appPath }]);
+  assert.equal(await module.exports.openInstalledProject(repository, spec), true);
+  const launch = { command: executable, args: [argument], cwd: appPath };
+  assert.deepEqual(launches, [launch, launch]);
 }));
 
 test("opening an installed macOS project hands the bundle to Launch Services", () => fixture(async temp => {
@@ -245,6 +273,7 @@ test("opening an installed macOS project hands the bundle to Launch Services", (
   await mkdir(resources, { recursive: true });
   await mkdir(binary, { recursive: true });
   await writeFile(join(resources, "morka-launch.json"), JSON.stringify(config));
+  await writeFile(join(resources, "main.cjs"), "");
   await writeFile(join(binary, "Electron"), "");
   const launches = [];
   const mocks = {
@@ -264,9 +293,13 @@ test("opening an installed macOS project hands the bundle to Launch Services", (
     console: { log() {} },
   });
   await module.exports.installDesktopApp(repository, spec, true);
-  assert.equal(launches.length, 1);
-  assert.equal(launches[0][0], "/usr/bin/open");
-  assert.equal(launches[0][1][0], bundle);
+  assert.equal(await module.exports.openInstalledProject(repository, spec), false);
+  const engine = join(repository, "node_modules", "@morkaai", "runtime", "dist", "electron");
+  await mkdir(engine, { recursive: true });
+  await writeFile(join(engine, "main.js"), "");
+  assert.equal(await module.exports.openInstalledProject(repository, spec), true);
+  assert.deepEqual(launches.map(([executable, [path]]) => [executable, path]),
+    [["/usr/bin/open", bundle], ["/usr/bin/open", bundle]]);
 }));
 
 test("a source checkout starts its managed app using the local Node and npm", () => fixture(async temp => {

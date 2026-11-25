@@ -1,12 +1,13 @@
 import { execFile, spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { copyFile, cp, mkdir, mkdtemp, readFile, readlink, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { app, shell } from "electron";
 import { promises as nativeFs } from "original-fs";
 import { writeTextAtomically } from "../app-runtime/text-file";
 import { info } from "../project/files";
+import { bundledToolchain } from "../project/toolchain";
 import { setBundleIdentity, signBundle } from "./distribution";
 import { projectIcon } from "./macos";
 import { appIcon, appsDirectory, portableAppName, repositoryFile, repositoryProfileId, type AppRelease } from "./repository";
@@ -16,6 +17,7 @@ type LaunchConfig = {
 };
 
 const launchFile = "morka-launch.json";
+const macAppResources = join("Contents", "Resources", "app");
 export const desktopProjectArgument = "--morka-project=";
 const bootstrap = `
 const { join } = require("node:path");
@@ -60,16 +62,21 @@ async function requireClosed(library: string, profile: string) {
   throw new Error("Close the project before updating its installed app.");
 }
 
+function macApplication(name: string) {
+  return join(app.getPath("home"), "Applications", `${name}.app`);
+}
+
+function launchConfig(directory: string): Promise<LaunchConfig | undefined> {
+  return readFile(join(directory, launchFile), "utf8").then(JSON.parse).catch(() => undefined);
+}
+
 async function installMacApp(name: string, config: LaunchConfig, library: string, toolchain?: string) {
-  const applications = join(app.getPath("home"), "Applications");
-  const bundle = join(applications, `${name}.app`);
+  const bundle = macApplication(name);
+  const applications = dirname(bundle);
   const binary = join("Contents", "MacOS", basename(process.execPath));
-  const appResources = join("Contents", "Resources", "app");
   const existing = await info(bundle);
   if (existing) {
-    const saved = existing.isDirectory()
-      ? await readFile(join(bundle, appResources, launchFile), "utf8").then(JSON.parse).catch(() => undefined)
-      : undefined;
+    const saved = existing.isDirectory() ? await launchConfig(join(bundle, macAppResources)) : undefined;
     if (saved?.profile !== config.profile || saved.repository !== config.repository) {
       throw new Error(`An app named “${name}” already exists in Applications.`);
     }
@@ -87,10 +94,10 @@ async function installMacApp(name: string, config: LaunchConfig, library: string
       { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
     const resources = join(replacement, "Contents", "Resources");
     await nativeFs.rm(join(resources, "default_app.asar"), { force: true });
-    await writeBootstrap(join(replacement, appResources), name, config);
+    await writeBootstrap(join(replacement, macAppResources), name, config);
     await copyFile(repositoryFile(config.repository, "icons", appIcon), join(resources, appIcon));
     if (toolchain) {
-      await cp(toolchain, join(replacement, appResources, "toolchain"),
+      await cp(toolchain, join(replacement, macAppResources, "toolchain"),
         { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
     }
     await setBundleIdentity(join(replacement, "Contents", "Info.plist"), {
@@ -141,9 +148,8 @@ async function writeProjectIcon(directory: string, spec: AppRelease) {
 }
 
 async function writeWindowsShortcut(directory: string, name: string, args: string, cwd: string, icon: string) {
-  const menu = join(app.getPath("appData"), "Microsoft", "Windows", "Start Menu", "Programs", "Morka");
-  const shortcut = join(menu, `${name}.lnk`);
-  await mkdir(menu, { recursive: true });
+  const shortcut = windowsShortcutPath(name);
+  await mkdir(dirname(shortcut), { recursive: true });
   const existing = await info(shortcut);
   if (existing && (!existing.isFile() || shell.readShortcutLink(shortcut).args !== args)) {
     throw new Error(`A shortcut named “${name}” already exists in the Start menu.`);
@@ -160,6 +166,10 @@ async function writeWindowsShortcut(directory: string, name: string, args: strin
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
+}
+
+function windowsShortcutPath(name: string) {
+  return join(app.getPath("appData"), "Microsoft", "Windows", "Start Menu", "Programs", "Morka", `${name}.lnk`);
 }
 
 async function launchDesktopApp(args: string[], cwd: string) {
@@ -201,12 +211,72 @@ function desktopEntry(name: string, executable: string, directory: string, icon:
   ].join("\n");
 }
 
-async function writeLinuxShortcut(name: string, profile: string, argument: string, icon: string) {
+function linuxShortcutPath(profile: string) {
   const configured = process.env.XDG_DATA_HOME;
   const data = configured && isAbsolute(configured) ? configured : join(app.getPath("home"), ".local", "share");
-  const entry = join(data, "applications", `local.morka.project.${profile}.desktop`);
+  return join(data, "applications", `local.morka.project.${profile}.desktop`);
+}
+
+async function writeLinuxShortcut(name: string, profile: string, argument: string, icon: string) {
+  const entry = linuxShortcutPath(profile);
   await writeTextAtomically(entry, desktopEntry(name, process.execPath, argument, icon));
   return entry;
+}
+
+async function launchMacApp(entry: string) {
+  // LaunchServices starts the installed bundle as its own application, as Finder does.
+  await promisify(execFile)("/usr/bin/open", [entry]);
+}
+
+export async function openInstalledProject(repository: string, spec: AppRelease) {
+  const profile = repositoryProfileId(spec, repository);
+  const library = appsDirectory(app.getPath("appData"));
+  const directory = join(library, "desktop", profile);
+  const mac = process.platform === "darwin";
+  const fromHost = app.isPackaged && !mac;
+  const bundle = mac ? macApplication(spec.name) : undefined;
+  if (!fromHost) {
+    const bootstrapDirectory = bundle ? join(bundle, macAppResources) : directory;
+    const saved = await launchConfig(bootstrapDirectory);
+    const engine = join(repository, "node_modules", "@morkaai", "runtime", "dist", "electron", "main.js");
+    if (saved?.profile !== profile || saved.repository !== repository ||
+        !(await info(join(bootstrapDirectory, "main.cjs")))?.isFile() || !(await info(engine))?.isFile()) return false;
+  }
+  if (bundle) {
+    await launchMacApp(bundle);
+    return true;
+  }
+  const argument = fromHost ? desktopProjectArgument + repository : directory;
+  if (process.platform === "win32") {
+    const entry = windowsShortcutPath(spec.name);
+    if (!(await info(entry))?.isFile()) return false;
+    const shortcut = shell.readShortcutLink(entry);
+    if (shortcut.args !== `"${argument}"` || shortcut.target?.toLowerCase() !== process.execPath.toLowerCase()) return false;
+  } else if (process.platform === "linux") {
+    const entry = await readFile(linuxShortcutPath(profile), "utf8").catch(() => undefined);
+    if (entry !== desktopEntry(spec.name, process.execPath, argument, join(directory, "icon.png"))) return false;
+  } else return false;
+  await launchDesktopApp([argument], fromHost ? app.getAppPath() : repository);
+  return true;
+}
+
+export async function installRepository(repository: string, spec: AppRelease) {
+  if (process.platform === "linux" && app.isPackaged) return installPackagedLinuxProject(repository, spec);
+  if (process.platform === "win32" && app.isPackaged) return installWindowsProject(repository, spec);
+  const toolchain = await bundledToolchain(process.env.MORKA_DESKTOP_TOOLCHAIN);
+  const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === "PATH") ?? "PATH";
+  try {
+    await promisify(execFile)(toolchain.node, [repositoryFile(repository, "npm", "install-app.cjs"), "--open"], {
+      cwd: repository, windowsHide: true, maxBuffer: 4 * 1024 * 1024,
+      env: { ...process.env, npm_execpath: toolchain.npm,
+        [pathKey]: [dirname(toolchain.node), process.env[pathKey]].filter(Boolean).join(delimiter),
+        MORKA_INSTALLER_ENGINE: resolve(__dirname, "../.."),
+        MORKA_INSTALL_TOOLCHAIN: toolchain.system ? "" : toolchain.root },
+    });
+  } catch (error) {
+    const failure = error as Error & { stderr?: string };
+    throw new Error(failure.stderr?.trim() || failure.message);
+  }
 }
 
 export async function installPackagedLinuxProject(repository: string, spec: AppRelease) {
@@ -250,10 +320,6 @@ export async function installDesktopApp(repository: string, spec: AppRelease, op
   }
   console.log(`Installed app at ${entry}`);
   if (!open) return;
-  if (process.platform === "darwin") {
-    // LaunchServices starts the installed bundle as its own application, as Finder does.
-    await promisify(execFile)("/usr/bin/open", [entry]);
-    return;
-  }
+  if (process.platform === "darwin") return launchMacApp(entry);
   await launchDesktopApp(args, repository);
 }

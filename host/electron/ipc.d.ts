@@ -28,12 +28,13 @@ type AddonRequest =
   | { type: "runAgentAction"; action: unknown; input: unknown };
 type AddonResult = { value?: unknown; error?: string };
 type AppInstallResult = { path: string; openError: string } | { error: string };
+type ProjectSourceKind = "folder" | "archive" | "git";
 
 interface Window {
   lab: {
     currentApp(): Promise<string | undefined>;
     installApp(name: string): Promise<AppInstallResult | undefined>;
-    openProject(): Promise<void>;
+    wakeProject(kind: ProjectSourceKind, gitUrl?: string): Promise<{ error: string } | undefined>;
     getPreview(): Promise<string | undefined>;
     onPreview(listener: (url?: string) => void): void;
     onPreviewUpdating(listener: (updating: boolean) => void): void;

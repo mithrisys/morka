@@ -16,7 +16,8 @@ const run = promisify(execFile);
 async function copyDependencies(source: string, target: string, dependencies: string[], parents = new Set<string>()) {
   const resolve = createRequire(join(source, "package.json")).resolve;
   for (const dependency of dependencies) {
-    const locations = resolve.paths(dependency) ?? [];
+    // Some npm dependencies share a name with a Node built-in, such as string_decoder.
+    const locations = resolve.paths(`${dependency}/package.json`) ?? [];
     let directory: string | undefined;
     for (const location of locations) {
       const candidate = join(location, dependency);

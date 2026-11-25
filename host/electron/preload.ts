@@ -4,7 +4,8 @@ if (process.isMainFrame) {
   contextBridge.exposeInMainWorld("lab", {
     currentApp: (): Promise<string | undefined> => ipcRenderer.invoke("instance:current"),
     installApp: (name: string): Promise<AppInstallResult | undefined> => ipcRenderer.invoke("instance:install", name),
-    openProject: (): Promise<void> => ipcRenderer.invoke("instance:open"),
+    wakeProject: (kind: ProjectSourceKind, gitUrl?: string): Promise<{ error: string } | undefined> =>
+      ipcRenderer.invoke("instance:wake", kind, gitUrl),
     getPreview: (): Promise<string | undefined> => ipcRenderer.invoke("canvas:current"),
     onPreview: (listener: (url?: string) => void) => {
       ipcRenderer.on("canvas:update", (_event, url) => listener(url));

@@ -74,7 +74,16 @@ async function testLauncher() {
     const wake = document.querySelector('#wake-project');
     return wake && [wake.textContent.trim(), getComputedStyle(wake).textDecorationLine,
       wake.getBoundingClientRect().top >= document.querySelector('#birth-caption').getBoundingClientRect().bottom];
-  })()`), ["wake up a morka…", "underline", true]);
+  })()`), ["or wake up a morka…", "underline", true]);
+  const buttonCenter = await evaluate(`(() => {
+    const { x, y, width, height } = document.querySelector('#wake-project').getBoundingClientRect();
+    return { x: Math.round(x + width / 2), y: Math.round(y + height / 2) };
+  })()`);
+  contents.sendInputEvent({ type: "mouseMove", ...buttonCenter });
+  assert.deepEqual(await evaluate(`new Promise(resolve => requestAnimationFrame(() => {
+    const wake = document.querySelector('#wake-project');
+    resolve([wake.matches(':hover'), getComputedStyle(wake).backgroundColor]);
+  }))`), [true, "rgba(0, 0, 0, 0)"]);
   await evaluate("document.querySelector('#wake-project').click()");
   const ready = () => evaluate(`new Promise((resolve, reject) => {
     const deadline = performance.now() + 5000;
@@ -102,7 +111,8 @@ async function testLauncher() {
   const archiveOptions = await pick("#wake-archive");
   assert.deepEqual(archiveOptions.properties, ["openFile"]);
   assert.ok(archiveOptions.filters[0].extensions.includes("zip"));
-  assert.equal(await evaluate("document.querySelector('#wake-git-url').labels[0].textContent"), "Git URL");
+  assert.equal(await evaluate("document.querySelector('#wake-git-url').labels[0].textContent"), "or its git url");
+  assert.equal(await evaluate("document.querySelector('#wake-dialog button[type=submit]').textContent"), "Launch");
 
   await pick("#wake-folder", project);
   await ready();

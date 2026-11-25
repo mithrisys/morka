@@ -60,7 +60,6 @@ body.launcher {
   text-underline-offset: .2em;
   cursor: pointer;
 }
-#wake-project:hover { background: var(--accent-soft); }
 .wake-pickers { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
 .launcher .app-setup {
   border: 1px solid rgb(255 255 255 / 80%);

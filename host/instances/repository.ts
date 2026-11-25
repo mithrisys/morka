@@ -160,7 +160,7 @@ Run \`npm run install:app\` to install the project in your Applications or app m
 This command installs missing npm dependencies. The installed app opens this
 checkout and uses the same local app data and chats as \`npm start\`.
 
-You can also open this folder with **wake up a morka…** in the Morka launcher.
+You can also open this folder with **or wake up a morka…** in the Morka launcher.
 To create a local launch script, run
 \`npm run build\` after installing the dependencies. The generated script lives
 in \`dist/\` and opens this checkout. On macOS, run \`npm run package:mac\`

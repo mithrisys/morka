@@ -120,14 +120,14 @@
         return;
       }
       if (create) {
-        if (result.openError) status.textContent = "Project created. Use “wake up a morka…” in Morka to open it. " + result.openError;
+        if (result.openError) status.textContent = "Project created. Use “or wake up a morka…” in Morka to open it. " + result.openError;
         else modal.close();
         return;
       }
       modal.close();
       if (!notice) return;
       notice.textContent = result.openError
-        ? "Project created. Use “wake up a morka…” in Morka to open it. " + result.openError
+        ? "Project created. Use “or wake up a morka…” in Morka to open it. " + result.openError
         : "Your app is ready in the system application menu.";
       notice.title = result.path;
       notice.hidden = false;

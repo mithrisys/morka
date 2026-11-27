@@ -2,7 +2,7 @@
   <img src="host/branding/morka-icon.png" width="96" height="96" alt="">
 </p>
 <h1 align="center">Morka</h1>
-<p align="center"><strong>Build your own desktop app with Morka. Start with “I wish…”</strong><br>
+<p align="center"><strong>Build your own AI-powered desktop app with Morka and your existing coding agent subscription.</strong><br>
 Your existing AI subscription powers your coding agent and the AI inside your app. Watch your edits go live without losing your place.</p>
 <p align="center">
   <a href="https://github.com/mithrisys/morka/releases"><strong>Download Morka</strong></a>

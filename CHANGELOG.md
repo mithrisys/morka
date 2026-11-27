@@ -4,11 +4,13 @@ Release entries describe user-visible changes and upgrade steps, newest first.
 
 ## 0.3.0-beta.5 (2026-11-27)
 
-The new quickstart walks you through building a personal desktop app with your existing Codex or Claude Code subscription. Try an AI feature on a meeting note, then change the layout while the note stays open. The README also explains how to switch agents, reuse Shadows, share an app, and contribute to Morka.
+Open an existing app from a folder, a ZIP or TAR.GZ archive, or a Git URL using **or wake up a morka…** in the launcher. Project shortcuts share the installed desktop runtime, and Morka can guide a project through a runtime API upgrade. On macOS, the project window, menu, and About panel use the app’s own name.
+
+The new quickstart walks you through building a personal desktop app with your existing Codex or Claude Code subscription. Try an AI feature on a meeting note, then change the layout while the note stays open.
 
 ### Installation
 
-Choose the download for your operating system and architecture below. The macOS build uses an ad-hoc signature and lacks Apple notarization. The README covers first launch on macOS. The Windows installer lacks a publisher signature.
+Choose the download for your operating system and architecture below. Open an existing project once from the Morka launcher to refresh an older shortcut. The macOS build uses an ad-hoc signature and lacks Apple notarization. The README covers first launch on macOS. The Windows installer lacks a publisher signature.
 
 [Full changelog](https://github.com/mithrisys/morka/compare/v0.3.0-beta.4...v0.3.0-beta.5)
 

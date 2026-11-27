@@ -2,6 +2,19 @@
 
 Release entries describe user-visible changes and upgrade steps, newest first.
 
+## 0.3.0 (2026-11-28)
+
+Morka can check GitHub Releases for updates when you open the launcher. The launcher shows the available version and waits for you to select **Download update**. Close your project windows before installing the update.
+
+### Upgrading
+
+Install the matching download once to enable updates on an older installation.
+
+- **macOS and Windows:** Update support requires a notarized macOS build or an Authenticode-signed Windows installer. After a later update finishes downloading, select **Restart to update**.
+- **Linux:** Select **Open installer** after downloading a DEB or RPM, then finish the update in the system package installer. For the portable tarball, select **Show download** and extract the new archive. After moving to the stable package name, open the new Morka once to register it for existing project shortcuts.
+
+[Full changelog](https://github.com/mithrisys/morka/compare/v0.3.0-beta.5...v0.3.0)
+
 ## 0.3.0-beta.5 (2026-11-27)
 
 Open an existing app from a folder, a ZIP or TAR.GZ archive, or a Git URL using **or wake up a morka…** in the launcher. Project shortcuts share the installed desktop runtime, and Morka can guide a project through a runtime API upgrade. On macOS, the project window, menu, and About panel use the app’s own name.

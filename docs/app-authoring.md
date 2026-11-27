@@ -60,7 +60,7 @@ The optional [preview scenario](preview-scenarios.md) exercises a workflow with 
 
 ## Agents and chat sessions
 
-In **AI setup**, check whether Codex and Claude Code are installed and signed in. After signing in through a terminal, click **Check again**. The first in-app AI action in a checkout asks for access to the local account. Morka stores the permission on that machine. Use **Reset app access** in **AI setup** to revoke it. Set `CODEX_BIN` or `CLAUDE_BIN` to override the CLI path.
+Click the brain icon in the workspace toolbar to open **AI setup** and check whether Codex and Claude Code are installed and signed in. After signing in through a terminal, click **Check again**. The first in-app AI action in a checkout asks for access to the local account. Morka stores the permission on that machine. Use **Reset app access** in **AI setup** to revoke it. Set `CODEX_BIN` or `CLAUDE_BIN` to override the CLI path.
 
 Use the agent picker beside the message field to choose the agent for the next message. Responses appear in the same chat history with the agent's name. Click **Stop agent** to stop the current turn. Morka gives the selected agent the draft and the active project rules.
 

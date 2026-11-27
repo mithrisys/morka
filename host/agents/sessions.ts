@@ -237,12 +237,13 @@ export class ChatSessions {
       }
       let preparedDirectory: string | undefined;
       let timing: ReturnType<typeof reviewTiming>;
+      const canInspect = Boolean(agent.connection.supportsImages && agent.connection.reviewConnection);
       const check = async (directory: string, scenario: PreviewScenario, reviewSignal: AbortSignal, visual: boolean) => {
-        const inspect = visual && agent.connection.supportsImages && agent.connection.reviewConnection
+        const inspect = visual && canInspect
           ? (images: AgentAttachment[], s: AbortSignal) => inspectScreens(agent.connection.reviewConnection!(), images, s, model)
           : undefined;
         await this.reviewer!(directory, scenario, reviewSignal, inspect);
-        return "Scenario passed at 1280 and 640 px. " + (inspect ? "Visual inspection passed." : "Visual inspection did not run.");
+        return "Scenario passed at 1280 and 640 px." + (inspect ? " Visual inspection passed." : "");
       };
       let project: Awaited<ReturnType<typeof compileProject>>;
       for (let attempt = 0; ; attempt++) {
@@ -274,8 +275,9 @@ export class ChatSessions {
             timing = project.preview && reviewTiming(current, changes(current, next), project.preview, fullReview);
             if (timing === "required") {
               preparing = false;
-              const detail = await check(preparedDirectory, project.preview!, signal, true);
-              message({id:"review", role:"activity", text:detail, activity:{kind:"command",status:"completed",title:"Review complete",detail}});
+              const detail = await check(preparedDirectory, project.preview!, signal, fullReview);
+              const title = fullReview ? "Review complete" : "Preview scenario passed";
+              message({ id: "review", role: "activity", text: detail, activity: { kind: "command", status: "completed", title, detail } });
             }
           }
           break;
@@ -313,11 +315,12 @@ export class ChatSessions {
       } else await publish();
       chat = { ...chat, base: digest(updated), activationFailure: undefined, pendingShadow: undefined };
       preparationTitle = fullReview && !changed.length ? "Review complete" : "Change applied";
-      if (timing === "background" && this.reviewer && project.preview && preparedDirectory) {
+      const firstVisualReview = timing === "required" && !fullReview && canInspect;
+      if ((timing === "background" || firstVisualReview) && this.reviewer && project.preview && preparedDirectory) {
         const controller = new AbortController();
         this.background = controller;
         const review: BackgroundReview = { id, turnId, root, source: next, directory: preparedDirectory,
-          scenario: project.preview, visual: changed.includes(previewFile), model, request: text,
+          scenario: project.preview, visual: firstVisualReview || changed.includes(previewFile), model, request: text,
           connection: agent.connection, check, emit };
         startBackground = () => {
           void this.backgroundReview(review, controller.signal)

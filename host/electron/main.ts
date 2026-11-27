@@ -805,6 +805,12 @@ async function start() {
   app.on("window-all-closed", () => app.quit());
   await app.whenReady();
   if (hasDesktopProjectShortcuts) Menu.setApplicationMenu(null);
+  else if (process.platform === "darwin" && instance) {
+    // Electron's default menu can be created before the project name is read.
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { role: "appMenu" }, { role: "fileMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" },
+    ]));
+  }
   if (instance) {
     if (migrationRuntimeApi !== undefined) {
       const confirmation = await dialog.showMessageBox({

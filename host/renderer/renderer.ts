@@ -34,7 +34,8 @@ const attachmentMenu = document.querySelector<HTMLDivElement>("#attachment-menu"
 const activityFeed = new ActivityFeed(transcript);
 const attachmentDrafts = new Map<string, ChatAttachment[]>();
 const statusText = document.querySelector<HTMLSpanElement>("#status")!;
-const agentIndicator = document.querySelector<HTMLSpanElement>("#agent-indicator")!;
+const agentIndicator = document.querySelector<HTMLButtonElement>("#agent-indicator")!;
+const agentStatus = document.querySelector<HTMLSpanElement>("#agent-status")!;
 const bubbles = new Map<string, { element: HTMLDivElement; text: string }>();
 const savedProviders = new Map<string, string>();
 const preferences = new Map<string, { model: string; effort: string }>();
@@ -143,10 +144,12 @@ void window.lab.chatTarget().then(target => {
 }).catch(showError);
 
 function showAgentActivity(active: boolean) {
-  agentIndicator.dataset.active = String(active);
+  const state = String(active);
+  if (agentIndicator.dataset.active === state) return;
+  agentIndicator.dataset.active = state;
   const label = active ? "Agent working" : "Agent idle";
-  agentIndicator.title = label;
-  agentIndicator.setAttribute("aria-label", label);
+  agentIndicator.title = `AI setup · ${label}`;
+  agentStatus.textContent = label;
 }
 
 let receivedActivityUpdate = false;
@@ -371,7 +374,7 @@ async function refreshAccounts(reset = false) {
     setupRefresh.disabled = setupReset.disabled = false;
   }
 }
-document.querySelector("#agent-setup-open")!.addEventListener("click", () => {
+agentIndicator.addEventListener("click", () => {
   setupDialog.showModal();
   if (!setupRefresh.disabled) void refreshAccounts();
 });

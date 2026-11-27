@@ -43,7 +43,7 @@ async function testSharedInstall(root, support, source) {
     const metadata = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8"));
     await writeFile(join(appRoot, "package.json"), JSON.stringify({ ...metadata, main: "install-test.cjs" }));
     await writeFile(join(appRoot, "install-test.cjs"), `
-      const { app, dialog } = require("electron");
+      const { app, dialog, Menu } = require("electron");
       const { writeFile } = require("node:fs/promises");
       const { join } = require("node:path");
       const { installRepository, openInstalledProject, registerCurrentDesktopRuntime } = require("./dist/instances/desktop.js");
@@ -92,6 +92,7 @@ async function testSharedInstall(root, support, source) {
           window.webContents.once("did-finish-load", async () => {
             await writeFile(join(app.getPath("userData"), "started.json"), JSON.stringify({
               pid: process.pid, name: app.name, executable: process.execPath, title: window.getTitle(),
+              menuTitle: Menu.getApplicationMenu().items[0].label,
             }));
           });
         });
@@ -161,6 +162,7 @@ async function testSharedInstall(root, support, source) {
       Object.assign(project, { repository, spec, bundle, receipt });
       assert.equal(started.name, name);
       assert.equal(started.title, name);
+      assert.equal(started.menuTitle, name);
       assert.equal(await realpath(started.executable), await realpath(expectedExecutable));
       await waitFor(async () => {
         const { port } = JSON.parse(await readFile(join(profile, "runtime", spec.id, "origin.json"), "utf8"));

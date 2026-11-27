@@ -29,6 +29,16 @@ static int showError(NSString *message) {
     return 1;
 }
 
+static NSURL *activeMorkaExecutable(NSString *file) {
+    if (!file.isAbsolutePath) return nil;
+    NSString *path = [[NSString stringWithContentsOfFile:file encoding:NSUTF8StringEncoding error:NULL]
+        stringByTrimmingCharactersInSet:NSCharacterSet.newlineCharacterSet];
+    if (!path.isAbsolutePath) return nil;
+    NSURL *executable = [NSURL fileURLWithPath:path];
+    NSURL *bundle = executable.URLByDeletingLastPathComponent.URLByDeletingLastPathComponent.URLByDeletingLastPathComponent;
+    return morkaExecutable(bundle, nil);
+}
+
 int main(void) {
     @autoreleasepool {
         NSURL *configURL = [NSBundle.mainBundle URLForResource:@"morka-launch" withExtension:@"json"];
@@ -40,13 +50,16 @@ int main(void) {
         NSString *repository = config[@"repository"];
         NSString *host = config[@"host"];
         NSString *version = config[@"runtimeVersion"];
+        NSString *runtimeFile = config[@"activeRuntime"];
         if (![repository isKindOfClass:NSString.class] || !repository.isAbsolutePath ||
             ![host isKindOfClass:NSString.class] || !host.isAbsolutePath ||
-            (version && ![version isKindOfClass:NSString.class])) {
+            (version && ![version isKindOfClass:NSString.class]) ||
+            (runtimeFile && ![runtimeFile isKindOfClass:NSString.class])) {
             return showError(@"Open the project from Morka to recreate its launcher.");
         }
 
-        NSURL *executable = morkaExecutable([NSURL fileURLWithPath:host isDirectory:YES], version);
+        NSURL *executable = activeMorkaExecutable(runtimeFile);
+        if (!executable) executable = morkaExecutable([NSURL fileURLWithPath:host isDirectory:YES], version);
         if (!executable) {
             NSString *identifier = version ? [@"local.morka.runtime." stringByAppendingString:version] : @"local.morka";
             NSURL *installed = [NSWorkspace.sharedWorkspace URLForApplicationWithBundleIdentifier:identifier];

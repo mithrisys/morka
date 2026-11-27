@@ -23,7 +23,7 @@ type ShadowPackageReference = { id: string; version: string; digest: string };
 type ImportedShadow = ShadowPackageReference & { description: string };
 type InstalledShadowInfo = { id: string; version: string; description?: string };
 type ChatTargetInfo = { kind: "app" | "shadow"; name: string; directory?: string };
-type RuntimeState = { status: "stopped" | "preparing" | "starting" | "running" | "stopping" | "error"; detail?: string };
+type RuntimeState = { status: "stopped" | "preparing" | "starting" | "running" | "stopping" | "error" | "upgrade"; detail?: string };
 type AddonRequest =
   | { type: "runAgentAction"; action: unknown; input: unknown };
 type AddonResult = { value?: unknown; error?: string };

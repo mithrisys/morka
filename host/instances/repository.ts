@@ -4,7 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, realpath, rename, rm, rmdir, writeFile } 
 import { join } from "node:path";
 import { applyFiles, info, type Files } from "../project/files";
 import { jsonFile } from "../project/project";
-import { isRuntimeVersion } from "./desktop-runtimes";
+import { runtimeRequirement, type RuntimeRequirement } from "./runtime-compatibility";
 
 export const idPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 export const repositoryConfig = [".morka", "release.json"];
@@ -23,12 +23,11 @@ export function repositoryFile(repository: string, ...parts: string[]) {
   return join(repository, ".morka", ...parts);
 }
 
-export type AppRelease = {
+export type AppRelease = RuntimeRequirement & {
   version: 1;
   id: string;
   name: string;
   iconColor: number;
-  runtimeVersion?: string;
   clonedFrom?: { id: string; revision: string };
 };
 
@@ -63,15 +62,12 @@ export function readRelease(path: string): AppRelease {
       spec.name !== appName(spec.name) || !Number.isInteger(spec.iconColor) || spec.iconColor < 0 || spec.iconColor >= 8) {
     throw new Error("Invalid Morka release configuration.");
   }
-  const { id, name, iconColor, clonedFrom, runtimeVersion } = spec;
-  if (runtimeVersion !== undefined && !isRuntimeVersion(runtimeVersion)) {
-    throw new Error("The Morka runtime version must be an exact release version.");
-  }
+  const { id, name, iconColor, clonedFrom } = spec;
   if (clonedFrom && (!idPattern.test(clonedFrom.id) || !/^[a-f0-9]{64}$/.test(clonedFrom.revision))) {
     throw new Error("Invalid Morka clone origin.");
   }
   portableAppName(name);
-  return { version: 1, id, name, iconColor, ...(runtimeVersion ? { runtimeVersion } : {}), ...(clonedFrom ? {
+  return { version: 1, id, name, iconColor, ...runtimeRequirement(spec), ...(clonedFrom ? {
     clonedFrom: { id: clonedFrom.id, revision: clonedFrom.revision },
   } : {}) };
 }
@@ -179,8 +175,8 @@ local CLI. Your account, chats and app data are stored outside the repository.
 
 Commit the app source, lockfiles and .morka/ to share this repo. The root
 package.json pins the published Morka runtime and packager versions.
-For desktop launches, .morka/release.json can specify an exact Morka
-version in runtimeVersion. Install and open that Morka version to register it.
+For desktop launches, runtimeVersion in .morka/release.json declares the
+minimum Morka release. runtimeApi declares the app's runtime contract.
 `;
   await writeRepositoryScaffold(directory, name, kit, scripts, `# ${spec.name}
 

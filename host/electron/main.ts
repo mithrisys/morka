@@ -18,8 +18,11 @@ import { ActionAccess } from "../agent-actions/access";
 import { ChatSessions } from "../agents/sessions";
 import { AgentRegistry } from "../agents/registry";
 import { makeIcon, projectIcon, type AppInstance } from "../instances/macos";
-import { currentDesktopRuntime, installDesktopApp, installRepository, openInstalledProject, projectRuntimeVersion, registerCurrentDesktopRuntime } from "../instances/desktop";
+import { currentDesktopRuntime, installDesktopApp, installRepository, launchDesktopApp, openInstalledProject,
+  projectRuntimeVersion, registerCurrentDesktopRuntime } from "../instances/desktop";
 import { desktopProjectArgument } from "../instances/desktop-runtimes";
+import { legacyRuntimeApi, runtimeCompatibility, starterRuntime } from "../instances/runtime-compatibility";
+import { planRuntimeUpgrade, upgradeProjectRuntime, type RuntimeUpgradePlan } from "../instances/runtime-upgrades";
 import { importGitProject, importProjectArchive, projectArchiveExtensions, readProjectCheckout } from "../instances/project-import";
 import { appIcon, appName, appsDirectory, bundledKit, checkoutKey, materializeRepository, portableAppName, preparedRelease, readRelease, releaseFile, releaseProject, repositoryFile, repositoryProfileId, repositoryProject, type AppRelease } from "../instances/repository";
 import { containsPath, createShadowRepository, readShadowWorkspace, type ShadowWorkspace } from "../instances/shadow-repository";
@@ -62,9 +65,11 @@ function registerInstaller(
         throw new Error("Choose a folder outside the original project.");
       }
       const iconColor = (source ? source.iconColor + randomInt(1, 8) : randomInt(8)) % 8;
-      const runtimeVersion = source?.runtimeVersion ?? (await currentDesktopRuntime())?.version;
+      const runtime = await currentDesktopRuntime();
+      const requirement = source ? { runtimeVersion: source.runtimeVersion, runtimeApi: source.runtimeApi ?? legacyRuntimeApi }
+        : runtime && starterRuntime;
       const spec: AppRelease = { version: 1, id: randomUUID(), name, iconColor,
-        ...(runtimeVersion ? { runtimeVersion } : {}),
+        ...requirement,
         ...(source ? { clonedFrom: { id: source.id, revision: digest(files) } } : {}) };
       const path = await materializeRepository(parent, spec, files, kitDirectory(), makeIcon(iconColor));
       const openError = await installRepository(path, spec).then(() => "", error => String(error));
@@ -142,7 +147,9 @@ async function createLauncher() {
   await window.loadFile(index);
 }
 
-async function createWindow(instance: AppInstance, release?: AppRelease, sourceLaunch = false) {
+type PendingRuntimeUpgrade = { plan: RuntimeUpgradePlan; release: AppRelease };
+
+async function createWindow(instance: AppInstance, release?: AppRelease, sourceLaunch = false, upgrade?: PendingRuntimeUpgrade) {
   const index = join(__dirname, "../renderer/index.html");
   const shellUrl = pathToFileURL(index).href;
   const dataDirectory = app.getPath("userData");
@@ -170,7 +177,7 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
   let managed = createManaged();
   let savedProject: Project | undefined;
   let savedArtifact: Artifact | undefined;
-  if ((await info(join(runtimeHome, "active.json")))?.isFile()) {
+  if (!upgrade && (await info(join(runtimeHome, "active.json")))?.isFile()) {
     for (const previous of [false, true]) {
       try {
         const artifact = await managed.recover(previous);
@@ -182,7 +189,7 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
       } catch (error) { console.error(error); }
     }
   }
-  const initialProject = savedProject ?? checkout.project;
+  const initialProject = savedProject ?? checkout.project ?? (upgrade ? await compileProject(new Map([[entryFile, Buffer.from(jsonFile(starterManifest))]])) : undefined);
   if (!initialProject) throw checkout.error;
   let project = initialProject;
   let previewProject = project;
@@ -233,6 +240,7 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
   let operation = false;
   let closing = false;
   let runtimeTask: Promise<void> = Promise.resolve();
+  let upgradeController: AbortController | undefined;
   const setRuntimeState = (status: RuntimeState["status"], detail?: string) => {
     runtimeState = { status, detail };
     if (!contents.isDestroyed()) contents.send("runtime:state", runtimeState);
@@ -310,6 +318,7 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
     return instance.name;
   });
   registerInstaller(window, requireShell, async () => {
+    if (upgrade) throw new Error("Finish the runtime upgrade before cloning the app.");
     if (activeAgentCount) throw new Error("Wait for the agent to finish before cloning this app.");
     return managed.sourceFiles ?? snapshot(projectDirectory);
   }, { source: () => ({ ...instance, projectDirectory, repositoryDirectory: repository }) });
@@ -412,6 +421,7 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
   }
 
   async function activateDraft(next: Project, publish: Publish, signal: AbortSignal, draft = true) {
+    if (upgrade) throw new Error("Finish the runtime upgrade before applying other edits.");
     await runtimeTask.catch(() => {});
     signal.throwIfAborted();
     if (operation || closing) throw new Error("Wait for the app service to finish its current operation.");
@@ -427,7 +437,7 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
   }
 
   function syncRuntime(next = project): Promise<void> {
-    if (operation || closing) return runtimeTask;
+    if (upgrade || operation || closing) return runtimeTask;
     operation = true;
     const prepared = savedArtifact;
     savedArtifact = undefined;
@@ -451,6 +461,41 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
     return runtimeTask;
   }
 
+  function runUpgrade() {
+    if (!upgrade || !repository || operation || closing) return runtimeTask;
+    const { plan, release: previous } = upgrade;
+    const controller = upgradeController = new AbortController();
+    const { signal } = controller;
+    operation = true;
+    setRuntimeState("preparing", `Preparing the upgrade from runtime API ${plan.from} to ${plan.to}…`);
+    runtimeTask = upgradeProjectRuntime({ repository, projectDirectory, release: previous, plan, signal,
+      draftDirectory: join(dataDirectory, "runtime-upgrades", `${plan.from}-to-${plan.to}`),
+      async agent() {
+        const accounts = (await registry.setup()).filter(account => account.state === "ready" || account.state === "managed");
+        signal.throwIfAborted();
+        if (!accounts.length) throw new Error("Sign in to an agent in AI setup, then retry the runtime upgrade.");
+        const { response } = await dialog.showMessageBox(window, {
+          type: "question", message: "Choose an agent to finish the runtime upgrade",
+          detail: "The agent will edit a draft of this app. Morka will verify and apply the changes.",
+          buttons: [...accounts.map(account => account.name), "Cancel"],
+          cancelId: accounts.length, signal,
+        });
+        if (!accounts[response]) throw new Error("The upgrade is paused. Retry when you are ready to choose an agent.");
+        setRuntimeState("preparing", `Upgrading with ${accounts[response].name}…`);
+        return registry.get(accounts[response].id).connection;
+      },
+      prepare: files => managed.prepare(files, { signal, updateLock: true,
+        onLog: text => setRuntimeState("preparing", text.trim().slice(-1000)) }),
+      activate: (candidate, artifact, publish) => activateManaged(candidate, artifact, publish, signal),
+    }).then(updated => {
+      Object.assign(instance, updated);
+      upgrade = undefined;
+    }).catch(error => {
+      if (!closing) setRuntimeState("upgrade", error instanceof Error ? error.message : String(error));
+    }).finally(() => { operation = false; upgradeController = undefined; });
+    return runtimeTask;
+  }
+
   contents.setWindowOpenHandler(() => ({ action: "deny" }));
   contents.on("will-frame-navigate", (event) => {
     const fromRuntime = runtimeUrl && URL.parse(event.url)?.origin === new URL(runtimeUrl).origin;
@@ -463,6 +508,7 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
   ipcMain.handle("runtime:state", (event) => { requireShell(event); return runtimeState; });
   ipcMain.handle("runtime:retry", async (event) => {
     requireShell(event);
+    if (upgrade) { await runUpgrade(); return; }
     if (operation || closing || runtimeState.status !== "error") return;
     try {
       const fresh = await compileProject(await snapshot(projectDirectory));
@@ -629,6 +675,7 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
     try {
       const scope = chatScope(event);
       if (!scope.workspace) {
+        if (upgrade) throw new Error("Finish the runtime upgrade before making other app changes.");
         if (removingShadow) throw new Error("Finish reviewing the Shadow removal first.");
         if (!(await ensureEditable())) return { stopped: true };
       }
@@ -660,6 +707,7 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
   let readyToClose = false;
   window.on("close", (event) => {
     closing = true;
+    upgradeController?.abort();
     livePreview.cancelUpdate();
     void livePreview.resume().then(() => { if (!contents.isDestroyed()) contents.send("canvas:updating", true); });
     if (readyToClose) return;
@@ -679,7 +727,7 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
     }
   });
   await window.loadFile(index);
-  if (!closing) void syncRuntime();
+  if (!closing) void (upgrade ? runUpgrade() : syncRuntime());
 }
 
 async function start() {
@@ -692,15 +740,27 @@ async function start() {
   if (desktopProject !== undefined && !isAbsolute(desktopProject)) throw new Error("The project path must be absolute.");
   const npmRepository = requestedRepository ? dirname(await repositoryProject(requestedRepository)) : undefined;
   const checkout = npmRepository ? readRelease(repositoryFile(npmRepository, "release.json")) : undefined;
-  if (desktopProject !== undefined) {
+  let migrationRuntimeApi: number | undefined;
+  let upgrade: PendingRuntimeUpgrade | undefined;
+  if (desktopProject !== undefined && checkout && npmRepository) {
     const runtime = await currentDesktopRuntime();
     if (runtime) {
-      const required = checkout && npmRepository ? await projectRuntimeVersion(npmRepository, checkout) : undefined;
-      if (required && runtime.version !== required) {
-        throw new Error(`This project requires Morka ${required}. Open the project from Morka to update its shortcut.`);
-      }
       for (const key of ["MORKA_INSTALL_APP", "MORKA_LOCAL_NODE", "MORKA_LOCAL_NPM", "MORKA_NPM_KIT", "MORKA_DESKTOP_TOOLCHAIN"]) {
         delete process.env[key];
+      }
+      const active = await registerCurrentDesktopRuntime();
+      if (active && active.resources !== runtime.resources) {
+        await launchDesktopApp([desktopProjectArgument + npmRepository], active.appDirectory, active.executable);
+        app.quit();
+        return;
+      }
+      const requirement = { ...checkout, runtimeVersion: await projectRuntimeVersion(npmRepository, checkout) };
+      const compatibility = runtimeCompatibility(requirement, runtime);
+      if (compatibility === "update") throw new Error(`Update Morka to open “${checkout.name}”. It requires ${requirement.runtimeVersion ? `Morka ${requirement.runtimeVersion} or newer and ` : ""}runtime API ${requirement.runtimeApi ?? legacyRuntimeApi}.`);
+      if (compatibility === "upgrade") {
+        migrationRuntimeApi = runtime.runtimeApi;
+        const plan = planRuntimeUpgrade(requirement, runtime);
+        if (plan) upgrade = { plan, release: checkout };
       }
     }
   }
@@ -746,8 +806,17 @@ async function start() {
   await app.whenReady();
   if (hasDesktopProjectShortcuts) Menu.setApplicationMenu(null);
   if (instance) {
+    if (migrationRuntimeApi !== undefined) {
+      const confirmation = await dialog.showMessageBox({
+        type: "info", title: "Project upgrade required", message: `Upgrade “${instance.name}” to open it in this version of Morka`,
+        detail: `The project uses runtime API ${instance.runtimeApi ?? legacyRuntimeApi}. This version uses API ${migrationRuntimeApi}.`,
+        buttons: ["Open in Morka to Upgrade", "Cancel"], cancelId: 1,
+      });
+      if (confirmation.response !== 0) { app.quit(); return; }
+      if (!upgrade) throw new Error("This version of Morka does not include an upgrade path for this project. The project and its data are unchanged.");
+    }
     if (macBundle && desktopProject) app.dock?.setIcon(projectIcon(instance.iconColor));
-    await createWindow(instance, release, Boolean(npmRepository && !release));
+    await createWindow(instance, release, Boolean(npmRepository && !release), upgrade);
   } else {
     app.dock?.setIcon(join(__dirname, "../branding/morka-icon.png"));
     await createLauncher();

@@ -176,9 +176,11 @@ chatToggle.addEventListener("click", () => setChatOpen(workspace.dataset.chatOpe
 
 function showRuntime(state: RuntimeState) {
   const labels = { stopped: "", preparing: "Preparing app update…", starting: "Starting app…", running: "",
-    stopping: "Stopping project…", error: "Project failed to start" };
-  runtimeButton.hidden = state.status !== "error";
-  runtimeStatus.textContent = state.status === "error" && state.detail ? state.detail.split("\n")[0] : state.detail ?? labels[state.status];
+    stopping: "Stopping project…", error: "Project failed to start", upgrade: "Runtime upgrade needs attention" };
+  runtimeButton.hidden = state.status !== "error" && state.status !== "upgrade";
+  runtimeButton.title = state.status === "upgrade" ? "Retry runtime upgrade" : "Retry starting app";
+  runtimeButton.setAttribute("aria-label", runtimeButton.title);
+  runtimeStatus.textContent = state.detail?.split("\n")[0] ?? labels[state.status];
   runtimeStatus.title = state.detail ?? "";
   runtimeStatus.hidden = !runtimeStatus.textContent;
 }

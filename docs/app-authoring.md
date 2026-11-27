@@ -23,9 +23,11 @@ npm start
 
 ## Choose a desktop runtime
 
-Set `runtimeVersion` in `.morka/release.json` to an exact Morka release such as `0.3.0-beta.4`. Morka writes this field when creating a project in the installed desktop app. An older checkout without the field uses the version that first installs its launcher and remembers that choice in its private profile.
+In `.morka/release.json`, set `runtimeVersion` to the minimum Morka release that supports the project, for example `0.3.0-beta.4`. Set `runtimeApi` to the project contract major, currently `1`. Morka writes the starter's requirements when creating projects from the installed desktop app. Legacy projects use API 1. A previously saved runtime version is a minimum when an older checkout omits the field.
 
-Each version supplies Morka, Electron, Chromium, Node.js and npm as one installation. Open the required desktop version once to register it in your local `Morka Apps/runtimes` directory. All projects using that version launch from the same installation. After changing `runtimeVersion`, close the project and open it from the Morka launcher to update its shortcut. The checkout keeps its private profile when its runtime changes.
+Each desktop release supplies Morka, Electron, Chromium, Node.js and npm in one installation. When opened, it registers itself in the local `Morka Apps/runtimes` directory. Project shortcuts follow the newest registered installation and share that runtime. A project opens directly when that runtime meets its minimum version and advertises support for its API. Open a shortcut made by a previous release from the Morka launcher once to refresh it.
+
+When Morka is too old for the project, update Morka. When the active runtime has dropped support for the project's API, select **Open in Morka to Upgrade**. Morka applies the bundled upgrade instructions in a separate draft. It checks the result with the target runtime and asks for an available AI agent if extra changes are needed. Morka publishes the source and the new runtime requirements after build, startup and preview validation. If the upgrade fails, the draft remains available and the existing project and data stay in place. Breaking database migrations require a separate plan.
 
 | Platform | Default location of a versioned install |
 | --- | --- |
@@ -33,7 +35,7 @@ Each version supplies Morka, Electron, Chromium, Node.js and npm as one installa
 | Windows | `%LOCALAPPDATA%\Programs\Morka-<version>` |
 | Linux (`.deb` / `.rpm`) | `/opt/Morka-<version>` |
 
-On macOS, run `npm run package:mac` with the required desktop version registered to build a self-contained app under `dist/`. New checkouts include a packaging command that uses the registered runtime for pinned projects. Recipients can run the prepared release offline without Morka installed and connect their own supported CLI account for AI features.
+On macOS, run `npm run package:mac` to build a self-contained app under `dist/`. The command embeds the newest registered Morka runtime that meets the project's minimum version and supports its API. Without a compatible runtime, open the project from Morka to check its requirements. Recipients can run the prepared release offline without Morka installed and connect their own supported CLI account for AI features.
 
 ## Project contract
 

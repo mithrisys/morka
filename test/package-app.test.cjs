@@ -36,7 +36,7 @@ const {snapshot}=require('../dist/project/files.js');
     const desktop=await readDesktopRuntime(join(host,'Contents/Resources'));
     const library=join(temporary,'Library','Application Support','Morka Apps');
     await registerDesktopRuntime(library,desktop);
-    const spec={version:1,id:randomUUID(),name:'Morka npm packaging test',iconColor:0,runtimeVersion:desktop.version};
+    const spec={version:1,id:randomUUID(),name:'Morka npm packaging test',iconColor:0,runtimeVersion:'0.3.0-beta.3',runtimeApi:1};
     await writeFile(join(repository,'package.json'),JSON.stringify({
       version:'1.0.0',scripts:{'package:mac':'node .morka/npm/package-mac.cjs'},
     }));

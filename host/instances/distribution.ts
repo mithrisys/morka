@@ -11,7 +11,8 @@ import { bundleToolchain } from "../project/bundle-toolchain";
 import { compileProject, jsonFile } from "../project/project";
 import { AppPackages, sealArtifactDirectory, writableTree } from "../project/packages";
 import { appIcon, appsDirectory, bundledKit, preparedRelease, readRelease, releaseFile, releaseProject, repositoryFile, repositoryProject, type AppRelease } from "./repository";
-import { desktopRuntimeFile, requireDesktopRuntime, writeDesktopRuntime, type DesktopRuntime } from "./desktop-runtimes";
+import { desktopRuntimeFile, requireCompatibleDesktopRuntime, writeDesktopRuntime, type DesktopRuntime } from "./desktop-runtimes";
+import { checkStarterRuntime } from "./runtime-compatibility";
 
 const run = promisify(execFile);
 
@@ -190,6 +191,7 @@ export async function buildMacBundle(
   const app = join(resources, "app");
   const dist = join(engine, "dist");
   const name = spec?.name ?? "Morka";
+  if (!spec) checkStarterRuntime(metadata.version);
 
   await run("/usr/bin/ditto", [electron, bundle]);
   await Promise.all([
@@ -218,8 +220,8 @@ export async function buildMacRelease(engine: string, repository: string,
   library = appsDirectory(join(homedir(), "Library", "Application Support"))) {
   if (process.platform !== "darwin") throw new Error("Build the macOS package on a Mac.");
   const spec = readRelease(repositoryFile(repository, "release.json"));
-  if (spec.runtimeVersion) {
-    const runtime = await requireDesktopRuntime(library, spec.runtimeVersion);
+  if (spec.runtimeVersion || spec.runtimeApi) {
+    const runtime = await requireCompatibleDesktopRuntime(library, spec);
     const local = createRequire(join(runtime.appDirectory, "package.json"));
     // Prepare the release using the same Morka code that will open it.
     const { exportDesktopMacRelease } = local("./dist/instances/distribution.js") as typeof import("./distribution");

@@ -80,6 +80,8 @@ After all native tests pass, the workflow stages the downloads and `SHA256SUMS.t
 
 The macOS build currently uses an ad-hoc signature. The Windows installer has no publisher signature. Record these limitations in release notes for preview builds. Plan Developer ID signing and notarization on macOS and Authenticode signing on Windows before broad distribution.
 
+Each desktop download bundles a runnable Morka runtime and advertises the app contracts it supports in `host/instances/runtime-compatibility.ts`. A compatible release keeps its existing API support. When a release drops an app contract, add the required steps and guidance to `host/instances/runtime-upgrades.ts` and exercise an older checkout through the upgrade, including failure recovery. Keep the starter's minimum version and API supported by the embedded runtime.
+
 To retry a tag that includes the desktop packaging scripts after a workflow fix, run **Release Morka** from `main` in GitHub Actions and enter the existing tag. The workflow builds that tag's commit and checks its successful push CI run on `main` before publishing.
 
 Configure npm Trusted Publishing for both packages with the GitHub repository `mithrisys/morka`, workflow filename `release.yml`, and direct publish permission. Only the publish job requests an OIDC token. After both packages are available, update the two exact versions in `packages/project-template/package.json` and run `npm install --package-lock-only --ignore-scripts` in that directory. Commit its lockfile to promote the release to new projects. The first publication of version `0.2.1` uses an authenticated npm session.

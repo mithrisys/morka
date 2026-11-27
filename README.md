@@ -72,9 +72,9 @@ Reuse instructions, agent skills, and assets across apps with [Shadows](docs/app
 
 Publish your app's Git repository so others can open it in Morka or run it with `npm ci` and `npm start` from the app repository root. Recipients connect their own supported agent account for AI features.
 
-Projects created in the desktop app pin an exact Morka runtime in `.morka/release.json`. Desktop installers keep versions side by side, and project launchers share the installation for their pinned version. On macOS, each project gets a lightweight `.app` in `~/Applications`. Windows and Linux add project shortcuts to their application menus. See [choosing a desktop runtime](docs/app-authoring.md#choose-a-desktop-runtime).
+Projects created in the desktop app declare a minimum Morka version and runtime API in `.morka/release.json`. Project launchers share the active Morka installation. A compatible update opens the project directly, and an incompatible runtime API can trigger a guided upgrade in Morka. On macOS, each project gets a lightweight `.app` in `~/Applications`. Windows and Linux add shortcuts to their application menus. See [desktop runtime compatibility](docs/app-authoring.md#choose-a-desktop-runtime).
 
-Run `npm run package:mac` from the app repository to create a self-contained `.app` in `dist/`. For a pinned project, the packager uses the registered desktop version at build time. For a checkout without a pin, run `npm ci` first. The output includes Electron, Node.js and the app's prepared dependencies, so it can launch offline without Morka installed.
+Run `npm run package:mac` from the app repository to create a self-contained `.app` in `dist/`. A project declaring runtime requirements uses the newest registered compatible installation at build time. For a legacy checkout without requirements, run `npm ci` first. The output includes Electron, Node.js and the app's prepared dependencies, so it can launch offline without Morka installed.
 
 ## Run Morka from source
 

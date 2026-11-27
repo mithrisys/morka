@@ -1,22 +1,19 @@
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import { readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join } from "node:path";
 import { writeTextAtomically } from "../app-runtime/text-file";
 import { info } from "../project/files";
+import { compareRuntimeVersions, isRuntimeApi, isRuntimeVersion, legacyRuntimeApi, runtimeCompatibility,
+  runtimeContract, type RuntimeContract, type RuntimeRequirement } from "./runtime-compatibility";
 
 export const desktopRuntimeFile = "morka-runtime.json";
 export const desktopProjectArgument = "--morka-project=";
 
-export function isRuntimeVersion(value: unknown): value is string {
-  return typeof value === "string" && value.length <= 64 &&
-    /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(value);
-}
-
-export type DesktopRuntime = { version: string; resources: string; executable: string; appDirectory: string };
+export type DesktopRuntime = RuntimeContract & { version: string; resources: string; executable: string; appDirectory: string };
 
 export async function writeDesktopRuntime(resources: string, version: string, executable: string) {
   if (!isRuntimeVersion(version)) throw new Error("Invalid desktop runtime version.");
   await writeFile(join(resources, desktopRuntimeFile), JSON.stringify({
-    version, executable, platform: process.platform, arch: process.arch,
+    version, executable, platform: process.platform, arch: process.arch, ...runtimeContract,
   }), { mode: 0o644 });
 }
 
@@ -33,18 +30,27 @@ export async function readDesktopRuntime(resources: string): Promise<DesktopRunt
   if (!manifest || !isRuntimeVersion(manifest.version) || manifest.platform !== process.platform ||
       manifest.arch !== process.arch || typeof manifest.executable !== "string" ||
       !/^[a-zA-Z0-9][a-zA-Z0-9 ._-]*$/.test(manifest.executable) || basename(manifest.executable) !== manifest.executable) return;
+  // In-place installations built before the API field use the original project contract.
+  const runtimeApi = manifest.runtimeApi ?? legacyRuntimeApi;
+  const supportedRuntimeApis = manifest.supportedRuntimeApis ?? [legacyRuntimeApi];
+  if (!isRuntimeApi(runtimeApi) || !Array.isArray(supportedRuntimeApis) ||
+      !supportedRuntimeApis.every(isRuntimeApi) || !supportedRuntimeApis.includes(runtimeApi)) return;
   const physicalResources = await realpath(resources);
   const executable = join(physicalResources, "..", ...(process.platform === "darwin" ? ["MacOS"] : []), manifest.executable);
   if (!(await info(executable))?.isFile()) return;
   const appDirectory = join(physicalResources, "app");
   const launcher = await readJson(join(appDirectory, "package.json"));
   if (launcher?.version !== manifest.version || !(await info(join(appDirectory, "dist", "toolchain", "toolchain.json")))?.isFile()) return;
-  return { version: manifest.version, resources: physicalResources, executable, appDirectory };
+  return { version: manifest.version, resources: physicalResources, executable, appDirectory, runtimeApi, supportedRuntimeApis };
 }
+
+function runtimeDirectory(library: string) { return join(library, "runtimes", `${process.platform}-${process.arch}`); }
+
+export function activeRuntimeFile(library: string) { return join(runtimeDirectory(library), "active-executable"); }
 
 function runtimeRegistration(library: string, version: string) {
   if (!isRuntimeVersion(version)) throw new Error("Invalid desktop runtime version.");
-  return join(library, "runtimes", `${process.platform}-${process.arch}`, `${version}.json`);
+  return join(runtimeDirectory(library), `${version}.json`);
 }
 
 export async function findDesktopRuntime(library: string, version: string) {
@@ -54,9 +60,28 @@ export async function findDesktopRuntime(library: string, version: string) {
   if (runtime?.version === version) return runtime;
 }
 
-export async function requireDesktopRuntime(library: string, version: string) {
-  const runtime = await findDesktopRuntime(library, version);
-  if (!runtime) throw new Error(`This project requires Morka ${version}. Install that version, open it once, then try again.`);
+export async function newestDesktopRuntime(library: string, requirement?: RuntimeRequirement) {
+  const entries = await readdir(runtimeDirectory(library)).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const versions = entries.filter(file => file.endsWith(".json")).map(file => file.slice(0, -5)).filter(isRuntimeVersion);
+  versions.sort((left, right) => compareRuntimeVersions(right, left));
+  for (const version of versions) {
+    const runtime = await findDesktopRuntime(library, version);
+    if (runtime && (!requirement || runtimeCompatibility(requirement, runtime) === "compatible")) return runtime;
+  }
+}
+
+export async function requireCompatibleDesktopRuntime(library: string, requirement: RuntimeRequirement) {
+  const runtime = await newestDesktopRuntime(library, requirement);
+  if (!runtime) throw new Error("A compatible Morka runtime is required. Open the project from Morka to check compatibility or upgrade it.");
+  return runtime;
+}
+
+export async function updateActiveDesktopRuntime(library: string) {
+  const runtime = await newestDesktopRuntime(library);
+  if (runtime) await writeTextAtomically(activeRuntimeFile(library), runtime.executable + "\n");
   return runtime;
 }
 

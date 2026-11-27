@@ -7,6 +7,7 @@ import { desktopAssets } from "./metadata.mjs";
 const require = createRequire(import.meta.url);
 const { buildMacBundle, writeDesktopResources } = require("../../dist/instances/distribution.js");
 const { writeDesktopRuntime } = require("../../dist/instances/desktop-runtimes.js");
+const { checkStarterRuntime } = require("../../dist/instances/runtime-compatibility.js");
 const { version } = JSON.parse(await readFile("package.json", "utf8"));
 const product = `Morka-${version}`;
 const linuxExecutable = `morka-${version.toLowerCase()}`;
@@ -35,6 +36,7 @@ try {
     await symlink("/Applications", join(image, "Applications"));
     run("hdiutil", ["create", "-quiet", "-format", "UDZO", "-volname", "Morka", "-srcfolder", image, join(stage, assets.dmg)]);
   } else {
+    checkStarterRuntime(version);
     const windows = process.platform === "win32";
     const executable = windows ? `${product}.exe` : linuxExecutable;
     const app = join(image, "morka");

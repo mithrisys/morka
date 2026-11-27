@@ -14,7 +14,7 @@ Use your existing Codex or Claude Code subscription to build your app for macOS,
 
 ## Quickstart
 
-1. **Install the desktop preview.** Choose the release asset for your operating system and architecture. Morka includes Node.js and npm. For this walkthrough, have the Codex or Claude Code CLI installed and signed in on your computer. [Downloads and release notes](https://github.com/mithrisys/morka/releases)
+1. **Install Morka.** Choose the release asset for your operating system and architecture. Morka includes Node.js and npm. For this walkthrough, have the Codex or Claude Code CLI installed and signed in on your computer. [Downloads and release notes](https://github.com/mithrisys/morka/releases)
 2. **Create your app.** Open Morka and swipe right on the launcher, or focus the create button and press Enter. Name the app *Meeting Scratchpad* and choose a folder. In the app window, click the brain icon to check your sign-in under **AI setup**.
 3. **Give it a job.** Open **Chat**, pick your agent, and paste this prompt.
 

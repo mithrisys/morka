@@ -7,6 +7,8 @@ description: Create or edit the Morka project's interface, runtime, services, an
 
 Start with the project manifest used by the current draft. Apps use `morka.project.json`. Read `project_files` for editable file contents, `project_paths` for the file inventory, and `project_instructions` for the project's active rules and skills, including imported Shadows. Follow the existing layout. Use native `apply_patch` in the project draft. Morka validates the draft, then publishes its changes. If paths move, update their references in the manifest.
 
+Implement the requested change in the current turn. Save the edits and finish the turn so Morka can run the preview checks and show the result. Morka handles screenshot review after an ordinary edit has been applied.
+
 For a standard Morka Git repository, the draft root corresponds to `app/`. Edit paths relative to the draft root. The outer repository owns `README.md`, `AGENTS.md`, `package.json`, `package-lock.json`, Git metadata, and `.morka/`. Keep those outer files intact. The app has its own editable package.json and package-lock.json inside this draft (app/ in the repository); declare arbitrary app dependencies there. Keep assets and services inside the draft.
 
 Use the app's Shadows panel to install or remove a Shadow. Direct package authoring to New Shadow or Open Shadow so it uses the independent package repository.

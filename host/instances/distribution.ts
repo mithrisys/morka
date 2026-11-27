@@ -11,7 +11,7 @@ import { bundleToolchain } from "../project/bundle-toolchain";
 import { compileProject, jsonFile } from "../project/project";
 import { AppPackages, sealArtifactDirectory, writableTree } from "../project/packages";
 import { appIcon, appsDirectory, bundledKit, preparedRelease, readRelease, releaseFile, releaseProject, repositoryFile, repositoryProject, type AppRelease } from "./repository";
-import { desktopRuntimeFile, requireCompatibleDesktopRuntime, writeDesktopRuntime, type DesktopRuntime } from "./desktop-runtimes";
+import { desktopRuntimeFile, macProjectLaunchFile, requireCompatibleDesktopRuntime, writeDesktopRuntime, type DesktopRuntime } from "./desktop-runtimes";
 import { checkStarterRuntime } from "./runtime-compatibility";
 
 const run = promisify(execFile);
@@ -41,9 +41,9 @@ async function copyDependencies(source: string, target: string, dependencies: st
   }
 }
 
-export async function setBundleIdentity(plist: string, values: Record<string, string>) {
+export async function setBundleIdentity(plist: string, values: Record<string, string | boolean>) {
   for (const [key, value] of Object.entries(values)) {
-    await run("/usr/bin/plutil", ["-replace", key, "-string", value, plist]);
+    await run("/usr/bin/plutil", ["-replace", key, typeof value === "boolean" ? "-bool" : "-string", String(value), plist]);
   }
 }
 
@@ -55,19 +55,26 @@ export async function signBundle(bundle: string, deep = false) {
 }
 
 export async function prepareMacProjectExecutable(
-  executable: string, appData: string, repository: string, spec: AppRelease,
+  runtime: DesktopRuntime, appData: string, repository: string, spec: AppRelease,
 ) {
-  const source = resolve(executable, "../../..");
+  const { executable, resources: runtimeResources } = runtime;
+  const source = resolve(runtimeResources, "../..");
   const contents = join(source, "Contents");
-  const [infoPlist, resources] = await Promise.all([
+  const [infoPlist, signature, icon] = await Promise.all([
     readFile(join(contents, "Info.plist")),
     readFile(join(contents, "_CodeSignature", "CodeResources")).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== "ENOENT") throw error;
       return undefined;
     }),
+    readFile(repositoryFile(repository, "icons", appIcon)).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+      return undefined;
+    }),
   ]);
   const project = createHash("sha256").update(spec.id + "\0" + repository).digest("hex").slice(0, 32);
-  const revision = createHash("sha256").update(spec.name + "\0").update(infoPlist).update(resources ?? await readFile(executable))
+  const launch = JSON.stringify({ repository, runtimeResources });
+  const revision = createHash("sha256").update(launch + "\0" + spec.name + "\0").update(infoPlist)
+    .update(signature ?? await readFile(executable)).update(icon ?? "")
     .digest("hex").slice(0, 24);
   const directory = join(appsDirectory(appData), "macOS", project, revision);
   const bundleName = `${spec.name}.app`;
@@ -81,12 +88,15 @@ export async function prepareMacProjectExecutable(
   const bundle = join(stage, bundleName);
   try {
     await cp(source, bundle, { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
+    await writeFile(join(bundle, "Contents", "Resources", macProjectLaunchFile), launch);
+    if (icon) await writeFile(join(bundle, "Contents", "Resources", appIcon), icon);
     await setBundleIdentity(join(bundle, "Contents", "Info.plist"), {
       CFBundleName: spec.name,
       CFBundleDisplayName: spec.name,
       CFBundleIdentifier: `local.morka.project.${project}`,
+      LSUIElement: true,
     });
-    await signBundle(bundle, !resources);
+    await signBundle(bundle, !signature);
     try {
       await rename(bundle, destination);
     } catch (error) {

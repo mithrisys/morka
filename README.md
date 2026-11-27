@@ -33,7 +33,7 @@ Each release provides `SHA256SUMS.txt` and notes on platform support, signing, a
 ## Quickstart
 
 1. Launch Morka. Swipe right on the launcher or focus the create control and press Enter. Name your app and pick a folder. To launch an existing app, select **or wake up a morka…** and choose its folder, choose a ZIP or TAR.GZ archive, or enter its Git URL.
-2. Open **AI setup** to check your local agent sign-in.
+2. Click the brain icon to open **AI setup** and check your local agent sign-in.
 3. Open **Chat**, select an agent, and describe what you want.
 
 ```text

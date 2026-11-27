@@ -10,7 +10,7 @@ Edit your app as you use it and see changes live without losing state.</p>
   · <a href="#run-morka-from-source">Run from source</a>
 </p>
 
-Build for macOS, Windows, or Linux with your existing Codex or Claude Code subscription. No separate API key required.
+Use your existing Codex or Claude Code subscription to build your app for macOS, Windows, or Linux and power its AI features. No separate API key required.
 
 ## Quickstart
 

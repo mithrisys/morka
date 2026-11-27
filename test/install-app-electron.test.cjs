@@ -9,6 +9,19 @@ const { app } = require("electron");
 
 const run = promisify(execFile);
 
+async function macAppIdentity(pid) {
+  const { stdout } = await run("/usr/bin/osascript", ["-l", "JavaScript", "-e", `
+    ObjC.import('AppKit');
+    function run(args) {
+      const application = $.NSRunningApplication.runningApplicationWithProcessIdentifier(Number(args[0]));
+      const bundle = $.NSBundle.bundleWithURL(application.bundleURL);
+      return JSON.stringify({ name: ObjC.unwrap(application.localizedName),
+        bundleName: ObjC.unwrap(bundle.objectForInfoDictionaryKey('CFBundleName')) });
+    }
+  `, String(pid)]);
+  return JSON.parse(stdout);
+}
+
 async function waitFor(check) {
   const deadline = Date.now() + 30_000;
   for (;;) {
@@ -93,6 +106,7 @@ async function testSharedInstall(root, support, source) {
             await writeFile(join(app.getPath("userData"), "started.json"), JSON.stringify({
               pid: process.pid, name: app.name, executable: process.execPath, title: window.getTitle(),
               menuTitle: Menu.getApplicationMenu().items[0].label,
+              aboutTitle: Menu.getApplicationMenu().items[0].submenu.items.find(item => item.role === "about").label,
             }));
           });
         });
@@ -137,7 +151,6 @@ async function testSharedInstall(root, support, source) {
       ["Morka Shared Test C", previousVersion],
     ]) {
       const expectedExecutable = join(host, "Contents/MacOS/Morka");
-      const expectedNode = join(host, "Contents/Resources/app/dist/toolchain/bin/node");
       const spec = { version: 1, id: require("node:crypto").randomUUID(), name, iconColor: projects.length, runtimeVersion, runtimeApi: 1 };
       const repository = await materializeRepository(temporary, spec, testSource, kit, makeIcon(spec.iconColor));
       const profile = join(support, "Morka Apps", "instances", repositoryProfileId(spec, repository));
@@ -163,7 +176,14 @@ async function testSharedInstall(root, support, source) {
       assert.equal(started.name, name);
       assert.equal(started.title, name);
       assert.equal(started.menuTitle, name);
-      assert.equal(await realpath(started.executable), await realpath(expectedExecutable));
+      assert.equal(started.aboutTitle, `About ${name}`);
+      assert.deepEqual(await macAppIdentity(project.pid), { name, bundleName: name });
+      const runningResources = resolve(started.executable, "../../Resources");
+      assert.deepEqual(JSON.parse(await readFile(join(runningResources, "morka-project-launch.json"), "utf8")), {
+        repository, runtimeResources: join(host, "Contents/Resources"),
+      });
+      assert.ok(started.executable.startsWith(join(support, "Morka Apps", "macOS") + "/"));
+      const expectedNode = join(runningResources, "app/dist/toolchain/bin/node");
       await waitFor(async () => {
         const { port } = JSON.parse(await readFile(join(profile, "runtime", spec.id, "origin.json"), "utf8"));
         const response = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1000) });
@@ -174,7 +194,7 @@ async function testSharedInstall(root, support, source) {
       await run("/usr/bin/open", [bundle]);
       await waitFor(() => readFile(reopened, "utf8"));
       assert.equal(JSON.parse(await readFile(receipt, "utf8")).pid, project.pid);
-      console.log(`PASS: ${name} is ${bundleSize} KiB, accepts its minimum Morka ${runtimeVersion}, and uses Morka ${metadata.version}.`);
+      console.log(`PASS: ${name} has a ${bundleSize} KiB launcher and a native project name, and uses Morka ${metadata.version}.`);
     }
     assert.equal(new Set(projects.map(project => project.pid)).size, projects.length);
     assert.deepEqual((await readdir(join(support, "Morka Apps", "runtimes", `${process.platform}-${process.arch}`))).sort(),
@@ -200,7 +220,11 @@ async function testSharedInstall(root, support, source) {
     await run("/usr/bin/open", [project.bundle]);
     const started = await waitFor(async () => JSON.parse(await readFile(project.receipt, "utf8")));
     project.pid = started.pid;
-    assert.equal(await realpath(started.executable), await realpath(join(nextHost, "Contents/MacOS/Morka")));
+    const runningResources = resolve(started.executable, "../../Resources");
+    assert.deepEqual(JSON.parse(await readFile(join(runningResources, "morka-project-launch.json"), "utf8")), {
+      repository: project.repository, runtimeResources: nextResources,
+    });
+    assert.deepEqual(await macAppIdentity(project.pid), { name: project.spec.name, bundleName: project.spec.name });
     assert.equal(await readFile(join(temporary, "upgrade-confirmation"), "utf8"), "Open in Morka to Upgrade");
     await waitFor(async () => assert.deepEqual(readRelease(repositoryFile(project.repository, "release.json")), {
       ...project.spec, runtimeVersion: nextVersion, runtimeApi: 2,

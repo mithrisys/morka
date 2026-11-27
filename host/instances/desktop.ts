@@ -11,7 +11,7 @@ import { bundledToolchain } from "../project/toolchain";
 import { setBundleIdentity, signBundle } from "./distribution";
 import { projectIcon } from "./macos";
 import { appIcon, appsDirectory, portableAppName, repositoryFile, repositoryProfileId, type AppRelease } from "./repository";
-import { activeRuntimeFile, desktopProjectArgument, readDesktopRuntime, registerDesktopRuntime,
+import { activeRuntimeFile, desktopProjectArgument, newestDesktopRuntime, readDesktopRuntime, readMacProjectLaunch, registerDesktopRuntime,
   updateActiveDesktopRuntime, type DesktopRuntime } from "./desktop-runtimes";
 
 type ProjectLaunchConfig = { repository: string; profile: string };
@@ -85,7 +85,11 @@ async function usesSharedMacRuntime() {
 }
 
 export async function currentDesktopRuntime() {
-  if (app.isPackaged && process.resourcesPath) return readDesktopRuntime(process.resourcesPath);
+  if (!app.isPackaged || !process.resourcesPath) return;
+  const launch = process.platform === "darwin" ? await readMacProjectLaunch(process.resourcesPath) : undefined;
+  if (!launch) return readDesktopRuntime(process.resourcesPath);
+  // Keep the registry pointed at the shared installation when running in a project bundle.
+  return await readDesktopRuntime(launch.runtimeResources) ?? newestDesktopRuntime(appsDirectory(app.getPath("appData")));
 }
 
 export async function registerCurrentDesktopRuntime() {

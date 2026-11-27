@@ -7,6 +7,7 @@ import { compareRuntimeVersions, isRuntimeApi, isRuntimeVersion, legacyRuntimeAp
 
 export const desktopRuntimeFile = "morka-runtime.json";
 export const desktopProjectArgument = "--morka-project=";
+export const macProjectLaunchFile = "morka-project-launch.json";
 
 export type DesktopRuntime = RuntimeContract & { version: string; resources: string; executable: string; appDirectory: string };
 
@@ -23,6 +24,16 @@ async function readJson(file: string) {
     throw error;
   });
   return text === undefined ? undefined : JSON.parse(text);
+}
+
+export async function readMacProjectLaunch(resources: string): Promise<{ repository: string; runtimeResources: string } | undefined> {
+  const launch = await readJson(join(resources, macProjectLaunchFile));
+  if (launch === undefined) return;
+  if (typeof launch?.repository !== "string" || !isAbsolute(launch.repository) ||
+      typeof launch.runtimeResources !== "string" || !isAbsolute(launch.runtimeResources)) {
+    throw new Error("Invalid macOS project launch configuration.");
+  }
+  return launch;
 }
 
 export async function readDesktopRuntime(resources: string): Promise<DesktopRuntime | undefined> {

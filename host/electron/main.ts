@@ -20,7 +20,8 @@ import { AgentRegistry } from "../agents/registry";
 import { makeIcon, projectIcon, type AppInstance } from "../instances/macos";
 import { currentDesktopRuntime, installDesktopApp, installRepository, launchDesktopApp, openInstalledProject,
   projectRuntimeVersion, registerCurrentDesktopRuntime } from "../instances/desktop";
-import { desktopProjectArgument } from "../instances/desktop-runtimes";
+import { desktopProjectArgument, readMacProjectLaunch } from "../instances/desktop-runtimes";
+import { prepareMacProjectExecutable } from "../instances/distribution";
 import { legacyRuntimeApi, runtimeCompatibility, starterRuntime } from "../instances/runtime-compatibility";
 import { planRuntimeUpgrade, upgradeProjectRuntime, type RuntimeUpgradePlan } from "../instances/runtime-upgrades";
 import { importGitProject, importProjectArchive, projectArchiveExtensions, readProjectCheckout } from "../instances/project-import";
@@ -734,8 +735,10 @@ async function start() {
   const macBundle = app.isPackaged && process.platform === "darwin";
   const metadata = macBundle ? join(process.resourcesPath, releaseFile) : "";
   const release = macBundle && statSync(metadata, { throwIfNoEntry: false })?.isFile() ? readRelease(metadata) : undefined;
+  const macProject = macBundle && !release ? await readMacProjectLaunch(process.resourcesPath) : undefined;
   const desktopProject = app.isPackaged && (hasDesktopProjectShortcuts || (macBundle && !release))
-    ? process.argv.find(argument => argument.startsWith(desktopProjectArgument))?.slice(desktopProjectArgument.length) : undefined;
+    ? process.argv.find(argument => argument.startsWith(desktopProjectArgument))?.slice(desktopProjectArgument.length) ?? macProject?.repository : undefined;
+  if (macProject && desktopProject !== macProject.repository) throw new Error("Open the requested project from its installed launcher.");
   const requestedRepository = desktopProject ?? process.env.MORKA_NPM_REPOSITORY?.trim();
   if (desktopProject !== undefined && !isAbsolute(desktopProject)) throw new Error("The project path must be absolute.");
   const npmRepository = requestedRepository ? dirname(await repositoryProject(requestedRepository)) : undefined;
@@ -744,22 +747,27 @@ async function start() {
   let upgrade: PendingRuntimeUpgrade | undefined;
   if (desktopProject !== undefined && checkout && npmRepository) {
     const runtime = await currentDesktopRuntime();
+    if (macProject && !runtime) throw new Error("Open Morka to register a desktop runtime, then open this project again.");
     if (runtime) {
       for (const key of ["MORKA_INSTALL_APP", "MORKA_LOCAL_NODE", "MORKA_LOCAL_NPM", "MORKA_NPM_KIT", "MORKA_DESKTOP_TOOLCHAIN"]) {
         delete process.env[key];
       }
       const active = await registerCurrentDesktopRuntime();
-      if (active && active.resources !== runtime.resources) {
-        await launchDesktopApp([desktopProjectArgument + npmRepository], active.appDirectory, active.executable);
+      const selected = active ?? runtime;
+      const executable = macBundle
+        ? await prepareMacProjectExecutable(selected, app.getPath("appData"), npmRepository, checkout)
+        : selected.executable;
+      if (macBundle ? await realpath(process.execPath) !== executable : selected.resources !== runtime.resources) {
+        await launchDesktopApp([desktopProjectArgument + npmRepository], selected.appDirectory, executable);
         app.quit();
         return;
       }
       const requirement = { ...checkout, runtimeVersion: await projectRuntimeVersion(npmRepository, checkout) };
-      const compatibility = runtimeCompatibility(requirement, runtime);
+      const compatibility = runtimeCompatibility(requirement, selected);
       if (compatibility === "update") throw new Error(`Update Morka to open “${checkout.name}”. It requires ${requirement.runtimeVersion ? `Morka ${requirement.runtimeVersion} or newer and ` : ""}runtime API ${requirement.runtimeApi ?? legacyRuntimeApi}.`);
       if (compatibility === "upgrade") {
-        migrationRuntimeApi = runtime.runtimeApi;
-        const plan = planRuntimeUpgrade(requirement, runtime);
+        migrationRuntimeApi = selected.runtimeApi;
+        const plan = planRuntimeUpgrade(requirement, selected);
         if (plan) upgrade = { plan, release: checkout };
       }
     }

@@ -49,6 +49,7 @@ async function testApp() {
       await writeFile(join(turn.cwd, "styles.css"), "body { margin: 0; display: grid; place-items: center; min-height: 100vh; }\n" +
         "#circle { width: 80px; height: 80px; background: blue; border-radius: 50%; }\n");
       await writeFile(join(turn.cwd, "morka.preview.json"), JSON.stringify({ steps: [{ kind: "expect", selector: "#circle" }] }));
+      turn.onMessage({ id: "reply", role: "assistant", text: "I added a centered circle." });
       return "completed";
     },
     supportsImages: true,
@@ -127,6 +128,10 @@ async function testApp() {
     await waitFor(() => evaluate("document.querySelector('#agent-setup[open] #agent-setup-accounts').textContent.includes('Test Agent')"), "Keyboard activation should open AI setup");
     await evaluate("document.querySelector('#agent-setup').close()");
     assert.equal(await evaluate("document.activeElement.id"), "agent-indicator");
+    const gaps = await evaluate(`Array.from(document.querySelector('#transcript').children)
+      .map(item => item.getBoundingClientRect()).slice(1)
+      .map((box, i) => box.top - document.querySelector('#transcript').children[i].getBoundingClientRect().bottom)`);
+    assert.ok(gaps.length >= 2 && gaps.every(gap => gap >= 14), `Expected spacing between chat messages, got ${gaps.join(', ')}`);
   } catch (error) {
     outcomes.push({ status: "rejected", reason: error });
   }

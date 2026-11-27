@@ -18,7 +18,8 @@ import { ActionAccess } from "../agent-actions/access";
 import { ChatSessions } from "../agents/sessions";
 import { AgentRegistry } from "../agents/registry";
 import { makeIcon, projectIcon, type AppInstance } from "../instances/macos";
-import { desktopProjectArgument, installDesktopApp, installRepository, openInstalledProject } from "../instances/desktop";
+import { currentDesktopRuntime, installDesktopApp, installRepository, openInstalledProject, projectRuntimeVersion, registerCurrentDesktopRuntime } from "../instances/desktop";
+import { desktopProjectArgument } from "../instances/desktop-runtimes";
 import { importGitProject, importProjectArchive, projectArchiveExtensions, readProjectCheckout } from "../instances/project-import";
 import { appIcon, appName, appsDirectory, bundledKit, checkoutKey, materializeRepository, portableAppName, preparedRelease, readRelease, releaseFile, releaseProject, repositoryFile, repositoryProfileId, repositoryProject, type AppRelease } from "../instances/repository";
 import { containsPath, createShadowRepository, readShadowWorkspace, type ShadowWorkspace } from "../instances/shadow-repository";
@@ -61,7 +62,9 @@ function registerInstaller(
         throw new Error("Choose a folder outside the original project.");
       }
       const iconColor = (source ? source.iconColor + randomInt(1, 8) : randomInt(8)) % 8;
+      const runtimeVersion = source?.runtimeVersion ?? (await currentDesktopRuntime())?.version;
       const spec: AppRelease = { version: 1, id: randomUUID(), name, iconColor,
+        ...(runtimeVersion ? { runtimeVersion } : {}),
         ...(source ? { clonedFrom: { id: source.id, revision: digest(files) } } : {}) };
       const path = await materializeRepository(parent, spec, files, kitDirectory(), makeIcon(iconColor));
       const openError = await installRepository(path, spec).then(() => "", error => String(error));
@@ -688,19 +691,31 @@ async function start() {
   const requestedRepository = desktopProject ?? process.env.MORKA_NPM_REPOSITORY?.trim();
   if (desktopProject !== undefined && !isAbsolute(desktopProject)) throw new Error("The project path must be absolute.");
   const npmRepository = requestedRepository ? dirname(await repositoryProject(requestedRepository)) : undefined;
+  const checkout = npmRepository ? readRelease(repositoryFile(npmRepository, "release.json")) : undefined;
+  if (desktopProject !== undefined) {
+    const runtime = await currentDesktopRuntime();
+    if (runtime) {
+      const required = checkout && npmRepository ? await projectRuntimeVersion(npmRepository, checkout) : undefined;
+      if (required && runtime.version !== required) {
+        throw new Error(`This project requires Morka ${required}. Open the project from Morka to update its shortcut.`);
+      }
+      for (const key of ["MORKA_INSTALL_APP", "MORKA_LOCAL_NODE", "MORKA_LOCAL_NPM", "MORKA_NPM_KIT", "MORKA_DESKTOP_TOOLCHAIN"]) {
+        delete process.env[key];
+      }
+    }
+  }
   const install = process.env.MORKA_INSTALL_APP;
   if (install === "1" || install === "open") {
-    if (!npmRepository) throw new Error("App installation requires a Morka project.");
-    const spec = readRelease(repositoryFile(npmRepository, "release.json"));
+    if (!npmRepository || !checkout) throw new Error("App installation requires a Morka project.");
     if (process.platform === "darwin") app.setActivationPolicy("prohibited");
     await app.whenReady();
-    await installDesktopApp(npmRepository, spec, install === "open");
+    await installDesktopApp(npmRepository, checkout, install === "open");
     app.exit(0);
     return;
   }
   const instance = release ? { ...release, projectDirectory: join(process.resourcesPath, releaseProject) }
-    : npmRepository ? {
-      ...readRelease(repositoryFile(npmRepository, "release.json")),
+    : npmRepository && checkout ? {
+      ...checkout,
       repositoryDirectory: npmRepository,
       projectDirectory: join(npmRepository, "app"),
     } : undefined;
@@ -710,7 +725,10 @@ async function start() {
   mkdirSync(data, { recursive: true, mode: 0o700 });
   app.setPath("userData", data);
   app.setName(instance?.name ?? "Morka");
-  if (process.platform === "win32" && !instance) app.setAppUserModelId("local.morka.desktop");
+  if (!instance) {
+    const runtime = await registerCurrentDesktopRuntime();
+    if (process.platform === "win32") app.setAppUserModelId(runtime ? `local.morka.desktop.${runtime.version}` : "local.morka.desktop");
+  }
 
   if (!app.requestSingleInstanceLock()) {
     app.quit();

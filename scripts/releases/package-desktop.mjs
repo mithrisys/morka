@@ -6,7 +6,10 @@ import { desktopAssets } from "./metadata.mjs";
 
 const require = createRequire(import.meta.url);
 const { buildMacBundle, writeDesktopResources } = require("../../dist/instances/distribution.js");
+const { writeDesktopRuntime } = require("../../dist/instances/desktop-runtimes.js");
 const { version } = JSON.parse(await readFile("package.json", "utf8"));
+const product = `Morka-${version}`;
+const linuxExecutable = `morka-${version.toLowerCase()}`;
 const target = `${process.platform}-${process.arch}`;
 const assets = desktopAssets(version)[target];
 if (!assets) throw new Error(`No release target for ${target}.`);
@@ -27,12 +30,13 @@ try {
   const image = join(stage, "image");
   await mkdir(image);
   if (process.platform === "darwin") {
-    const bundle = join(image, "Morka.app");
+    const bundle = join(image, `${product}.app`);
     await buildMacBundle(process.cwd(), bundle, kit);
     await symlink("/Applications", join(image, "Applications"));
     run("hdiutil", ["create", "-quiet", "-format", "UDZO", "-volname", "Morka", "-srcfolder", image, join(stage, assets.dmg)]);
   } else {
     const windows = process.platform === "win32";
+    const executable = windows ? `${product}.exe` : linuxExecutable;
     const app = join(image, "morka");
     const electron = dirname(require("electron"));
     await cp(electron, app, {
@@ -41,8 +45,9 @@ try {
     });
     const resources = join(app, "resources");
     await rm(join(resources, "default_app.asar"));
-    await rename(join(app, windows ? "electron.exe" : "electron"), join(app, windows ? "Morka.exe" : "morka"));
-    await writeDesktopResources(process.cwd(), resources, "Morka", kit);
+    await rename(join(app, windows ? "electron.exe" : "electron"), join(app, executable));
+    await writeDesktopResources(process.cwd(), resources, "Morka", kit, undefined, `${linuxExecutable}.desktop`);
+    await writeDesktopRuntime(resources, version, executable);
     const { build, Platform, Arch } = require("electron-builder");
     if (windows) {
       const { convertIcon } = require("app-builder-lib/out/util/iconConverter");
@@ -55,8 +60,8 @@ try {
       if (!iconPath) throw new Error("The Windows application icon could not be built.");
       // electron-builder skips executable resource editing for prepackaged apps.
       await editWindowsResources({
-        file: join(app, "Morka.exe"), iconPath,
-        versionStrings: { FileDescription: "Morka", ProductName: "Morka", OriginalFilename: "Morka.exe" },
+        file: join(app, executable), iconPath,
+        versionStrings: { FileDescription: "Morka", ProductName: "Morka", OriginalFilename: executable },
         fileVersion: version, productVersion: version.split("-")[0],
       });
       await build({
@@ -64,7 +69,7 @@ try {
         prepackaged: app,
         publish: "never",
         config: {
-          appId: "local.morka.desktop", productName: "Morka",
+          appId: `local.morka.desktop.${version}`, productName: product,
           directories: { output: stage },
           win: { icon: iconPath },
           nsis: {
@@ -82,12 +87,14 @@ try {
         prepackaged: app,
         publish: "never",
         config: {
-          appId: "local.morka.desktop", productName: "Morka",
+          appId: `local.morka.desktop.${version}`, productName: product,
+          extraMetadata: { desktopName: `${linuxExecutable}.desktop` },
           directories: { output: stage },
           linux: {
-            executableName: "morka", icon: join(resources, "app/dist/branding/morka-icon.png"),
+            executableName: linuxExecutable, packageName: linuxExecutable,
+            icon: join(resources, "app/dist/branding/morka-icon.png"),
             category: "Development", syncDesktopName: true,
-            desktop: { entry: { Icon: "/opt/Morka/resources/app/dist/branding/morka-icon.png" } },
+            desktop: { entry: { Icon: `/opt/${product}/resources/app/dist/branding/morka-icon.png` } },
             maintainer: "Morka <74207454+mithrisys@users.noreply.github.com>",
           },
           deb: {

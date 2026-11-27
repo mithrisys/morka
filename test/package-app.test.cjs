@@ -6,7 +6,8 @@ const {randomUUID}=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const {createRequire}=require('node:module');
 const {AppPackages,writableTree}=require('../dist/project/packages.js');
-const {buildMacRelease}=require('../dist/instances/distribution.js');
+const {buildMacBundle}=require('../dist/instances/distribution.js');
+const {readDesktopRuntime,registerDesktopRuntime}=require('../dist/instances/desktop-runtimes.js');
 const {snapshot}=require('../dist/project/files.js');
 
 (async()=>{
@@ -29,14 +30,32 @@ const {snapshot}=require('../dist/project/files.js');
     await mkdir(join(repository,'.morka/icons'),{recursive:true});
     for(const [path,data] of artifact.source){await mkdir(dirname(join(repository,'app',path)),{recursive:true});await writeFile(join(repository,'app',path),data);}
     await copyFile(join(root,'dist/branding/Morka.icns'),join(repository,'.morka/icons/AppIcon.icns'));
-    const spec={version:1,id:randomUUID(),name:'Morka npm packaging test',iconColor:0};
-    await writeFile(join(repository,'package.json'),JSON.stringify({version:'1.0.0'}));
+    const kit=join(root,'dist/npm');
+    const host=join(temporary,'Morka.app');
+    await buildMacBundle(root,host,kit);
+    const desktop=await readDesktopRuntime(join(host,'Contents/Resources'));
+    const library=join(temporary,'Library','Application Support','Morka Apps');
+    await registerDesktopRuntime(library,desktop);
+    const spec={version:1,id:randomUUID(),name:'Morka npm packaging test',iconColor:0,runtimeVersion:desktop.version};
+    await writeFile(join(repository,'package.json'),JSON.stringify({
+      version:'1.0.0',scripts:{'package:mac':'node .morka/npm/package-mac.cjs'},
+    }));
     await writeFile(join(repository,'.morka/release.json'),JSON.stringify(spec));
-    await cp(join(root,'dist/npm'),join(repository,'.morka/npm'),{recursive:true});
-    const bundle=await buildMacRelease(root,repository);
+    await cp(kit,join(repository,'.morka/npm'),{recursive:true});
+    const {npmEntry}=require('../dist/project/toolchain.js');
+    const npm=await npmEntry(process.execPath,process.env.npm_execpath);
+    const command=spawnSync(process.execPath,[npm,'run','package:mac'],{
+      cwd:repository,encoding:'utf8',env:{...process.env,HOME:temporary},timeout:90_000,
+    });
+    assert.equal(command.status,0,command.error?.message ?? command.stderr);
+    const bundle=join(repository,'dist',`${spec.name}.app`);
     const resources=join(bundle,'Contents/Resources');
     const toolkit=join(resources,'app/dist/toolchain');
     const executable=join(toolkit,'bin/node');
+    assert.equal(await readFile(join(toolkit,'toolchain.json'),'utf8'),
+      await readFile(join(desktop.appDirectory,'dist/toolchain/toolchain.json'),'utf8'));
+    await assert.rejects(readFile(join(resources,'morka-runtime.json')),{code:'ENOENT'});
+    await rm(host,{recursive:true,force:true});
     const packagedApp=join(resources,'morka-app-release/app');
     const native=spawnSync(executable,['-e',"console.log(require('native-answer'))"],{cwd:packagedApp,encoding:'utf8',env:{PATH:'/usr/bin:/bin'}});
     assert.equal(native.status,0,native.stderr);assert.equal(native.stdout.trim(),'42');

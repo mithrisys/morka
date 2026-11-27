@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const dist = join(root, "dist");
@@ -21,6 +22,10 @@ try {
   await mkdir(archives);
   await cp(join(root, "packages/project-template/package-lock.json"), join(kit, "project-lock.json"));
   await cp(join(root, "packages", "runtime", "install-app.cjs"), join(kit, "install-app.cjs"));
+  await build({
+    entryPoints: [join(root, "host", "instances", "package-mac-command.ts")], outfile: join(kit, "package-mac.cjs"),
+    bundle: true, platform: "node", format: "cjs", target: "node24",
+  });
   for (const component of ["runtime", "packager"]) {
     const directory = join(stage, component);
     const source = join(root, "packages", component);

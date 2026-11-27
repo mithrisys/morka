@@ -77,34 +77,41 @@ jobs:
         run: |
           $setup = (Get-ChildItem release/downloads/*.exe).FullName
           $dir = Join-Path $env:RUNNER_TEMP "Morka Desktop"
+          $version = node -p 'require("./package.json").version'
           $install = Start-Process -FilePath $setup -ArgumentList "/S", "/D=$dir" -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "Installer failed with exit code $($install.ExitCode)" }
-          node test/desktop-download.mjs "$dir/Morka.exe" "$dir/resources"
+          node test/desktop-download.mjs "$dir/Morka-$version.exe" "$dir/resources"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $uninstall = Start-Process -FilePath "$dir/Uninstall Morka.exe" -ArgumentList "/S" -Wait -PassThru
+          $uninstall = Start-Process -FilePath "$dir/Uninstall Morka-$version.exe" -ArgumentList "/S" -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw "Uninstaller failed with exit code $($uninstall.ExitCode)" }
       - name: Extract and test the Linux application
         if: runner.os == 'Linux'
         run: |
+          version=$(node -p 'require("./package.json").version')
+          runtime="morka-${version,,}"
           tar -xzf release/downloads/*.tar.gz -C "$RUNNER_TEMP"
-          xvfb-run -a node test/desktop-download.mjs "$RUNNER_TEMP/morka/morka" "$RUNNER_TEMP/morka/resources"
+          xvfb-run -a node test/desktop-download.mjs "$RUNNER_TEMP/morka/$runtime" "$RUNNER_TEMP/morka/resources"
       - name: Install and test the Debian package
         if: runner.os == 'Linux'
         run: |
+          version=$(node -p 'require("./package.json").version')
+          runtime="morka-${version,,}"
           sudo apt-get install -y --no-install-recommends ./release/downloads/*.deb
-          test "$(dpkg-query -W -f='${Architecture}' morka)" = "$(dpkg --print-architecture)"
-          bash test/desktop-menu.sh /
-          xvfb-run -a node test/desktop-download.mjs /usr/bin/morka /opt/Morka/resources
+          test "$(dpkg-query -W -f='${Architecture}' "$runtime")" = "$(dpkg --print-architecture)"
+          bash test/desktop-menu.sh / "$runtime"
+          xvfb-run -a node test/desktop-download.mjs "/usr/bin/$runtime" "/opt/Morka-$version/resources"
       - name: Extract and test the RPM package
         if: runner.os == 'Linux'
         run: |
+          version=$(node -p 'require("./package.json").version')
+          runtime="morka-${version,,}"
           rpm_arch=x86_64
           if [ "$(uname -m)" = aarch64 ]; then rpm_arch=aarch64; fi
-          test "$(rpm -qp --queryformat '%{NAME}:%{ARCH}' release/downloads/*.rpm)" = "morka:$rpm_arch"
+          test "$(rpm -qp --queryformat '%{NAME}:%{ARCH}' release/downloads/*.rpm)" = "$runtime:$rpm_arch"
           mkdir "$RUNNER_TEMP/rpm"
           rpm2cpio release/downloads/*.rpm | (umask 022; cd "$RUNNER_TEMP/rpm" && cpio -idm --quiet)
-          bash test/desktop-menu.sh "$RUNNER_TEMP/rpm"
-          xvfb-run -a node test/desktop-download.mjs "$RUNNER_TEMP/rpm/opt/Morka/morka" "$RUNNER_TEMP/rpm/opt/Morka/resources"
+          bash test/desktop-menu.sh "$RUNNER_TEMP/rpm" "$runtime"
+          xvfb-run -a node test/desktop-download.mjs "$RUNNER_TEMP/rpm/opt/Morka-$version/$runtime" "$RUNNER_TEMP/rpm/opt/Morka-$version/resources"
       - uses: actions/cache/save@v5
         if: inputs.commit != ''
         with:

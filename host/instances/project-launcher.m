@@ -2,12 +2,19 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-static NSURL *morkaExecutable(NSURL *url) {
+static NSURL *morkaExecutable(NSURL *url, NSString *version) {
     if (!url) return nil;
     NSBundle *bundle = [NSBundle bundleWithURL:url];
-    if (![bundle.bundleIdentifier isEqualToString:@"local.morka"]) return nil;
+    if (![bundle.bundleIdentifier hasPrefix:@"local.morka.runtime."] &&
+        ![bundle.bundleIdentifier isEqualToString:@"local.morka"]) return nil;
     NSURL *launcher = [bundle.resourceURL URLByAppendingPathComponent:@"app/dist/instances/MorkaProject"];
     if (!launcher || ![NSFileManager.defaultManager isExecutableFileAtPath:launcher.path]) return nil;
+    if (version) {
+        NSURL *manifestURL = [bundle URLForResource:@"morka-runtime" withExtension:@"json"];
+        NSData *data = manifestURL ? [NSData dataWithContentsOfURL:manifestURL] : nil;
+        NSDictionary *manifest = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL] : nil;
+        if (![manifest isKindOfClass:NSDictionary.class] || ![version isEqual:manifest[@"version"]]) return nil;
+    }
     NSURL *executable = bundle.executableURL;
     return executable && [NSFileManager.defaultManager isExecutableFileAtPath:executable.path] ? executable : nil;
 }
@@ -32,18 +39,22 @@ int main(void) {
         }
         NSString *repository = config[@"repository"];
         NSString *host = config[@"host"];
+        NSString *version = config[@"runtimeVersion"];
         if (![repository isKindOfClass:NSString.class] || !repository.isAbsolutePath ||
-            ![host isKindOfClass:NSString.class] || !host.isAbsolutePath) {
+            ![host isKindOfClass:NSString.class] || !host.isAbsolutePath ||
+            (version && ![version isKindOfClass:NSString.class])) {
             return showError(@"Open the project from Morka to recreate its launcher.");
         }
 
-        NSURL *executable = morkaExecutable([NSURL fileURLWithPath:host isDirectory:YES]);
+        NSURL *executable = morkaExecutable([NSURL fileURLWithPath:host isDirectory:YES], version);
         if (!executable) {
-            NSURL *installed = [NSWorkspace.sharedWorkspace URLForApplicationWithBundleIdentifier:@"local.morka"];
-            executable = morkaExecutable(installed);
+            NSString *identifier = version ? [@"local.morka.runtime." stringByAppendingString:version] : @"local.morka";
+            NSURL *installed = [NSWorkspace.sharedWorkspace URLForApplicationWithBundleIdentifier:identifier];
+            executable = morkaExecutable(installed, version);
         }
         if (!executable) {
-            return showError(@"Install the current version of Morka in Applications, then open this project again.");
+            return showError(version ? [NSString stringWithFormat:@"Install and open Morka %@, then open this project from Morka.", version] :
+                @"Install Morka in Applications, then open this project again.");
         }
 
         NSString *argument = [@"--morka-project=" stringByAppendingString:repository];

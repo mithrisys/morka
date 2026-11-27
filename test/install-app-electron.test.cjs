@@ -21,15 +21,16 @@ async function waitFor(check) {
 }
 
 async function testSharedInstall(root, support, source) {
-  const { signBundle } = require("../dist/instances/distribution.js");
+  const { setBundleIdentity, signBundle } = require("../dist/instances/distribution.js");
+  const { writeDesktopRuntime } = require("../dist/instances/desktop-runtimes.js");
   const { materializeRepository, repositoryProfileId } = require("../dist/instances/repository.js");
   const { makeIcon } = require("../dist/instances/macos.js");
   const { writableTree } = require("../dist/project/packages.js");
   const kit = join(root, "dist/npm");
   const host = join(temporary, "Morka.app");
+  const previousHost = join(temporary, "Morka-0.2.0-test.app");
   const appRoot = join(host, "Contents/Resources/app");
   const morka = join(host, "Contents/MacOS/Morka");
-  const hostNode = join(appRoot, "dist/toolchain/bin/node");
   const projects = [];
   try {
     await run(join(root, "dist/toolchain/bin/node"), ["-e", `
@@ -45,12 +46,14 @@ async function testSharedInstall(root, support, source) {
       const { app } = require("electron");
       const { writeFile } = require("node:fs/promises");
       const { join } = require("node:path");
-      const { installRepository, openInstalledProject } = require("./dist/instances/desktop.js");
+      const { installRepository, openInstalledProject, registerCurrentDesktopRuntime } = require("./dist/instances/desktop.js");
       const { readRelease, repositoryFile } = require("./dist/instances/repository.js");
       app.setPath("home", ${JSON.stringify(temporary)});
       app.setPath("appData", ${JSON.stringify(support)});
       const repository = process.argv[1];
-      if (repository.startsWith("--morka-project=")) {
+      if (repository === "--register-runtime") {
+        registerCurrentDesktopRuntime().then(() => app.exit(0), error => { console.error(error); app.exit(1); });
+      } else if (repository.startsWith("--morka-project=")) {
         app.on("browser-window-created", (_event, window) => {
           window.webContents.once("did-finish-load", async () => {
             await writeFile(join(app.getPath("userData"), "started.json"), JSON.stringify({
@@ -73,6 +76,17 @@ async function testSharedInstall(root, support, source) {
       }
     `);
     await signBundle(host);
+    await run("/usr/bin/ditto", [host, previousHost]);
+    const previousVersion = "0.2.0-test";
+    const previousResources = join(previousHost, "Contents/Resources");
+    await writeFile(join(previousResources, "app/package.json"),
+      JSON.stringify({ ...metadata, main: "install-test.cjs", version: previousVersion }));
+    await writeDesktopRuntime(previousResources, previousVersion, "Morka");
+    await setBundleIdentity(join(previousHost, "Contents/Info.plist"), {
+      CFBundleIdentifier: `local.morka.runtime.${previousVersion}`,
+    });
+    await signBundle(previousHost);
+    await run(join(previousHost, "Contents/MacOS/Morka"), ["--register-runtime"], { timeout: 15_000 });
     const testSource = new Map(source);
     testSource.set("server.mjs", Buffer.from(`
       import { createServer } from "node:http";
@@ -82,8 +96,14 @@ async function testSharedInstall(root, support, source) {
       createServer((request, response) => response.end(request.url === "/health" ? "ready" :
         JSON.stringify({ saved, node: process.execPath }))).listen(Number(process.env.PORT), process.env.HOST);
     `));
-    for (const name of ["Morka Shared Test A", "Morka Shared Test B"]) {
-      const spec = { version: 1, id: require("node:crypto").randomUUID(), name, iconColor: projects.length };
+    for (const [name, runtimeVersion, runtimeHost] of [
+      ["Morka Shared Test A", metadata.version, host],
+      ["Morka Shared Test B", previousVersion, previousHost],
+      ["Morka Shared Test C", previousVersion, previousHost],
+    ]) {
+      const expectedExecutable = join(runtimeHost, "Contents/MacOS/Morka");
+      const expectedNode = join(runtimeHost, "Contents/Resources/app/dist/toolchain/bin/node");
+      const spec = { version: 1, id: require("node:crypto").randomUUID(), name, iconColor: projects.length, runtimeVersion };
       const repository = await materializeRepository(temporary, spec, testSource, kit, makeIcon(spec.iconColor));
       const profile = join(support, "Morka Apps", "instances", repositoryProfileId(spec, repository));
       const data = join(profile, "runtime-data");
@@ -95,6 +115,9 @@ async function testSharedInstall(root, support, source) {
       const bundle = join(temporary, "Applications", `${name}.app`);
       assert.deepEqual((await readdir(join(bundle, "Contents"))).sort(), ["Info.plist", "MacOS", "Resources", "_CodeSignature"]);
       execFileSync("/usr/bin/codesign", ["--verify", "--deep", "--strict", bundle]);
+      const launch = JSON.parse(await readFile(join(bundle, "Contents/Resources/morka-launch.json"), "utf8"));
+      assert.equal(launch.runtimeVersion, runtimeVersion);
+      assert.equal(await realpath(launch.host), await realpath(runtimeHost));
       const bundleSize = Number(execFileSync("/usr/bin/du", ["-sk", bundle], { encoding: "utf8" }).split(/\s+/)[0]);
       assert.ok(bundleSize <= 2 * 1024, `Expected a launcher under 2 MiB, got ${bundleSize} KiB`);
       await assert.rejects(lstat(join(repository, "node_modules")), { code: "ENOENT" });
@@ -103,20 +126,22 @@ async function testSharedInstall(root, support, source) {
       project.pid = started.pid;
       assert.equal(started.name, name);
       assert.equal(started.title, name);
-      assert.equal(await realpath(started.executable), await realpath(morka));
+      assert.equal(await realpath(started.executable), await realpath(expectedExecutable));
       await waitFor(async () => {
         const { port } = JSON.parse(await readFile(join(profile, "runtime", spec.id, "origin.json"), "utf8"));
         const response = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1000) });
-        assert.deepEqual(await response.json(), { saved: name, node: hostNode });
+        assert.deepEqual(await response.json(), { saved: name, node: expectedNode });
       });
       const reopened = join(profile, "reopened");
       await rm(reopened, { force: true });
       await run("/usr/bin/open", [bundle]);
       await waitFor(() => readFile(reopened, "utf8"));
       assert.equal(JSON.parse(await readFile(receipt, "utf8")).pid, project.pid);
-      console.log(`PASS: ${name} is ${bundleSize} KiB, uses the shared Morka and Node executables, and reads its existing data.`);
+      console.log(`PASS: ${name} is ${bundleSize} KiB, uses Morka ${runtimeVersion} and its Node, and reads its existing data.`);
     }
-    assert.notEqual(projects[0].pid, projects[1].pid);
+    assert.equal(new Set(projects.map(project => project.pid)).size, projects.length);
+    assert.deepEqual((await readdir(join(support, "Morka Apps", "runtimes", `${process.platform}-${process.arch}`))).sort(),
+      [`${previousVersion}.json`, `${metadata.version}.json`].sort());
   } finally {
     for (const project of projects) {
       if (project.pid) process.kill(project.pid, "SIGTERM");

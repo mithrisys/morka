@@ -8,7 +8,7 @@ Morka creates a Git repository for each app. Choose **or wake up a morka…** in
 
 In an open app, **Clone** copies the app source into a new repository. The same checkout shares its private app data, chats, and AI access settings across the system launcher, **or wake up a morka…**, and `npm start`.
 
-On Windows and Linux, projects created in the installed Morka desktop app use Morka's executable and bundled runtime. Morka adds each project to the Start menu or application menu with its own icon and stores generated releases locally. On Windows, the project source can live in a shared folder.
+The installed desktop app creates a lightweight launcher in `~/Applications` on macOS and adds a shortcut to the Start menu on Windows or the application menu on Linux. On Windows, the project source can live in a shared folder.
 
 The editable app source and `morka.project.json` live in `app/`. Declare app dependencies in `app/package.json` and commit `app/package-lock.json`. The repository root holds the npm launcher, project README, release settings, and Git metadata. Commit the source, lockfiles, and `.morka/` when sharing an app.
 
@@ -21,9 +21,19 @@ npm start
 
 `npm ci` installs the pinned versions of `@morkaai/runtime` and `@morkaai/packager`. Electron downloads its binary for the current platform. Use `npm run install:app` to add this checkout to Applications on macOS, the Start menu on Windows, or the application menu on Linux. The installer fetches dependencies if needed. Use `npm run build` to create a `.command`, `.cmd`, or `.sh` launcher in `dist/` that opens the same checkout using local Node.js and npm.
 
-On macOS, projects created or imported from the installed Morka app get a lightweight launcher in `~/Applications`. That launcher uses the runtime in `Morka.app` and opens the same checkout and private profile.
+## Choose a desktop runtime
 
-Run `npm run package:mac` to build a self-contained app under `dist/`. Recipients can run the prepared release offline without Morka installed and connect their own supported CLI account for AI features.
+Set `runtimeVersion` in `.morka/release.json` to an exact Morka release such as `0.3.0-beta.4`. Morka writes this field when creating a project in the installed desktop app. An older checkout without the field uses the version that first installs its launcher and remembers that choice in its private profile.
+
+Each version supplies Morka, Electron, Chromium, Node.js and npm as one installation. Open the required desktop version once to register it in your local `Morka Apps/runtimes` directory. All projects using that version launch from the same installation. After changing `runtimeVersion`, close the project and open it from the Morka launcher to update its shortcut. The checkout keeps its private profile when its runtime changes.
+
+| Platform | Default location of a versioned install |
+| --- | --- |
+| macOS | `/Applications/Morka-<version>.app` |
+| Windows | `%LOCALAPPDATA%\Programs\Morka-<version>` |
+| Linux (`.deb` / `.rpm`) | `/opt/Morka-<version>` |
+
+On macOS, run `npm run package:mac` with the required desktop version registered to build a self-contained app under `dist/`. New checkouts include a packaging command that uses the registered runtime for pinned projects. Recipients can run the prepared release offline without Morka installed and connect their own supported CLI account for AI features.
 
 ## Project contract
 

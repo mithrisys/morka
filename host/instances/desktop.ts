@@ -11,19 +11,19 @@ import { bundledToolchain } from "../project/toolchain";
 import { setBundleIdentity, signBundle } from "./distribution";
 import { projectIcon } from "./macos";
 import { appIcon, appsDirectory, portableAppName, repositoryFile, repositoryProfileId, type AppRelease } from "./repository";
+import { desktopProjectArgument, readDesktopRuntime, registerDesktopRuntime, requireDesktopRuntime, type DesktopRuntime } from "./desktop-runtimes";
 
 type ProjectLaunchConfig = { repository: string; profile: string };
 type LaunchConfig = ProjectLaunchConfig & {
   node: string; npm: string; electron: string; bundledNode: boolean; toolchainRevision?: string;
 };
-type SharedMacLaunchConfig = ProjectLaunchConfig & { host: string };
+type SharedMacLaunchConfig = ProjectLaunchConfig & { host: string; runtimeVersion?: string };
 
 const launchFile = "morka-launch.json";
 const macResources = join("Contents", "Resources");
 const macAppResources = join(macResources, "app");
 const macLauncher = "MorkaProject";
 const macLauncherBinary = join("Contents", "MacOS", macLauncher);
-export const desktopProjectArgument = "--morka-project=";
 const bootstrap = `
 const { join } = require("node:path");
 const launch = require("./${launchFile}");
@@ -71,16 +71,48 @@ function macApplication(name: string) {
   return join(app.getPath("home"), "Applications", `${name}.app`);
 }
 
-function launchConfig(directory: string): Promise<ProjectLaunchConfig | undefined> {
+function launchConfig(directory: string): Promise<(ProjectLaunchConfig & Partial<SharedMacLaunchConfig>) | undefined> {
   return readFile(join(directory, launchFile), "utf8").then(JSON.parse).catch(() => undefined);
 }
 
-function sharedMacLauncher() {
-  return join(app.getAppPath(), "dist", "instances", macLauncher);
+function sharedMacLauncher(runtime?: DesktopRuntime) {
+  return join(runtime?.appDirectory ?? app.getAppPath(), "dist", "instances", macLauncher);
 }
 
 async function usesSharedMacRuntime() {
   return process.platform === "darwin" && app.isPackaged && (await info(sharedMacLauncher()))?.isFile();
+}
+
+export async function currentDesktopRuntime() {
+  if (app.isPackaged && process.resourcesPath) return readDesktopRuntime(process.resourcesPath);
+}
+
+export async function registerCurrentDesktopRuntime() {
+  const runtime = await currentDesktopRuntime();
+  if (runtime) await registerDesktopRuntime(appsDirectory(app.getPath("appData")), runtime);
+  return runtime;
+}
+
+function runtimePin(repository: string, spec: AppRelease) {
+  return join(appsDirectory(app.getPath("appData")), "desktop", repositoryProfileId(spec, repository), "runtime-version");
+}
+
+export async function projectRuntimeVersion(repository: string, spec: AppRelease) {
+  return spec.runtimeVersion ?? readFile(runtimePin(repository, spec), "utf8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+  });
+}
+
+async function projectDesktopRuntime(repository: string, spec: AppRelease) {
+  const current = await registerCurrentDesktopRuntime();
+  if (!current && !(app.isPackaged && spec.runtimeVersion)) return;
+  const version = await projectRuntimeVersion(repository, spec);
+  const required = version ?? current?.version;
+  if (!required) return;
+  const selected = await requireDesktopRuntime(appsDirectory(app.getPath("appData")), required);
+  // Persist the first choice for older checkouts without changing their source.
+  if (!version) await writeTextAtomically(runtimePin(repository, spec), selected.version);
+  return selected;
 }
 
 async function installMacBundle(
@@ -150,11 +182,13 @@ async function installMacApp(name: string, config: LaunchConfig, library: string
   });
 }
 
-async function installSharedMacProject(repository: string, spec: AppRelease) {
+async function installSharedMacProject(repository: string, spec: AppRelease, runtime?: DesktopRuntime) {
   const name = portableAppName(spec.name);
   const library = appsDirectory(app.getPath("appData"));
   const config: SharedMacLaunchConfig = {
-    repository, profile: repositoryProfileId(spec, repository), host: resolve(process.resourcesPath, "../.."),
+    repository, profile: repositoryProfileId(spec, repository),
+    host: resolve(runtime?.resources ?? process.resourcesPath, "../.."),
+    ...(runtime ? { runtimeVersion: runtime.version } : {}),
   };
   const bundle = await installMacBundle(name, config, library, macResources, macLauncherBinary, async bundle => {
     const resources = join(bundle, macResources);
@@ -162,7 +196,7 @@ async function installSharedMacProject(repository: string, spec: AppRelease) {
     const plist = join(bundle, "Contents", "Info.plist");
     await Promise.all([mkdir(resources, { recursive: true }), mkdir(dirname(executable), { recursive: true })]);
     await Promise.all([
-      copyFile(sharedMacLauncher(), executable),
+      copyFile(sharedMacLauncher(runtime), executable),
       copyFile(repositoryFile(repository, "icons", appIcon), join(resources, appIcon)),
       writeTextAtomically(join(resources, launchFile), JSON.stringify(config)),
       writeFile(plist, JSON.stringify({
@@ -196,7 +230,8 @@ async function writeProjectIcon(directory: string, spec: AppRelease) {
   return icon;
 }
 
-async function writeWindowsShortcut(directory: string, name: string, args: string, cwd: string, icon: string) {
+async function writeWindowsShortcut(directory: string, name: string, args: string, cwd: string, icon: string,
+  target = process.execPath) {
   const shortcut = windowsShortcutPath(name);
   await mkdir(dirname(shortcut), { recursive: true });
   const existing = await info(shortcut);
@@ -206,7 +241,7 @@ async function writeWindowsShortcut(directory: string, name: string, args: strin
   const temporary = await mkdtemp(join(directory, ".shortcut-"));
   try {
     const staged = join(temporary, basename(shortcut));
-    if (!shell.writeShortcutLink(staged, { target: process.execPath, args, cwd, icon, iconIndex: 0, description: name })) {
+    if (!shell.writeShortcutLink(staged, { target, args, cwd, icon, iconIndex: 0, description: name })) {
       throw new Error("Could not create the Start menu shortcut.");
     }
     if (existing) await rename(staged, shortcut);
@@ -221,8 +256,8 @@ function windowsShortcutPath(name: string) {
   return join(app.getPath("appData"), "Microsoft", "Windows", "Start Menu", "Programs", "Morka", `${name}.lnk`);
 }
 
-async function launchDesktopApp(args: string[], cwd: string) {
-  const child = spawn(process.execPath, args, { cwd, detached: true, stdio: "ignore", windowsHide: true });
+async function launchDesktopApp(args: string[], cwd: string, executable = process.execPath) {
+  const child = spawn(executable, args, { cwd, detached: true, stdio: "ignore", windowsHide: true });
   await new Promise<void>((resolve, reject) => {
     child.once("spawn", resolve);
     child.once("error", reject);
@@ -230,16 +265,16 @@ async function launchDesktopApp(args: string[], cwd: string) {
   child.unref();
 }
 
-export async function installWindowsProject(repository: string, spec: AppRelease) {
+async function installWindowsProject(repository: string, spec: AppRelease, runtime?: DesktopRuntime) {
   const name = portableAppName(spec.name);
   const library = appsDirectory(app.getPath("appData"));
   const directory = join(library, "desktop", repositoryProfileId(spec, repository));
   await mkdir(directory, { recursive: true });
   const icon = await writeProjectIcon(directory, spec);
   const argument = desktopProjectArgument + repository;
-  const cwd = app.getAppPath();
-  await writeWindowsShortcut(directory, name, `"${argument}"`, cwd, icon);
-  await launchDesktopApp([argument], cwd);
+  const cwd = runtime?.appDirectory ?? app.getAppPath();
+  await writeWindowsShortcut(directory, name, `"${argument}"`, cwd, icon, runtime?.executable);
+  await launchDesktopApp([argument], cwd, runtime?.executable);
 }
 
 function desktopValue(value: string) {
@@ -266,9 +301,9 @@ function linuxShortcutPath(profile: string) {
   return join(data, "applications", `local.morka.project.${profile}.desktop`);
 }
 
-async function writeLinuxShortcut(name: string, profile: string, argument: string, icon: string) {
+async function writeLinuxShortcut(name: string, profile: string, argument: string, icon: string, executable = process.execPath) {
   const entry = linuxShortcutPath(profile);
-  await writeTextAtomically(entry, desktopEntry(name, process.execPath, argument, icon));
+  await writeTextAtomically(entry, desktopEntry(name, executable, argument, icon));
   return entry;
 }
 
@@ -278,15 +313,18 @@ async function launchMacApp(entry: string) {
 }
 
 export async function openInstalledProject(repository: string, spec: AppRelease) {
+  const runtime = await projectDesktopRuntime(repository, spec);
+  const executable = runtime?.executable ?? process.execPath;
   const profile = repositoryProfileId(spec, repository);
   const library = appsDirectory(app.getPath("appData"));
   const directory = join(library, "desktop", profile);
   const mac = process.platform === "darwin";
   const fromHost = app.isPackaged && !mac;
   const bundle = mac ? macApplication(spec.name) : undefined;
-  if (bundle && await usesSharedMacRuntime()) {
+  if (bundle && (runtime || await usesSharedMacRuntime())) {
     const saved = await launchConfig(join(bundle, macResources));
     if (saved?.profile !== profile || saved.repository !== repository ||
+        (runtime && (saved.runtimeVersion !== runtime.version || saved.host !== resolve(runtime.resources, "../.."))) ||
         !(await info(join(bundle, macLauncherBinary)))?.isFile()) return false;
     await launchMacApp(bundle);
     return true;
@@ -307,19 +345,22 @@ export async function openInstalledProject(repository: string, spec: AppRelease)
     const entry = windowsShortcutPath(spec.name);
     if (!(await info(entry))?.isFile()) return false;
     const shortcut = shell.readShortcutLink(entry);
-    if (shortcut.args !== `"${argument}"` || shortcut.target?.toLowerCase() !== process.execPath.toLowerCase()) return false;
+    if (shortcut.args !== `"${argument}"` || shortcut.target?.toLowerCase() !== executable.toLowerCase()) return false;
   } else if (process.platform === "linux") {
     const entry = await readFile(linuxShortcutPath(profile), "utf8").catch(() => undefined);
-    if (entry !== desktopEntry(spec.name, process.execPath, argument, join(directory, "icon.png"))) return false;
+    if (entry !== desktopEntry(spec.name, executable, argument, join(directory, "icon.png"))) return false;
   } else return false;
-  await launchDesktopApp([argument], fromHost ? app.getAppPath() : repository);
+  await launchDesktopApp([argument], fromHost ? runtime?.appDirectory ?? app.getAppPath() : repository, executable);
   return true;
 }
 
 export async function installRepository(repository: string, spec: AppRelease) {
-  if (await usesSharedMacRuntime()) return installSharedMacProject(repository, spec);
-  if (process.platform === "linux" && app.isPackaged) return installPackagedLinuxProject(repository, spec);
-  if (process.platform === "win32" && app.isPackaged) return installWindowsProject(repository, spec);
+  const runtime = await projectDesktopRuntime(repository, spec);
+  if (process.platform === "darwin" && (runtime || await usesSharedMacRuntime())) {
+    return installSharedMacProject(repository, spec, runtime);
+  }
+  if (process.platform === "linux" && app.isPackaged) return installPackagedLinuxProject(repository, spec, runtime);
+  if (process.platform === "win32" && app.isPackaged) return installWindowsProject(repository, spec, runtime);
   const toolchain = await bundledToolchain(process.env.MORKA_DESKTOP_TOOLCHAIN);
   const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === "PATH") ?? "PATH";
   try {
@@ -336,7 +377,7 @@ export async function installRepository(repository: string, spec: AppRelease) {
   }
 }
 
-export async function installPackagedLinuxProject(repository: string, spec: AppRelease) {
+async function installPackagedLinuxProject(repository: string, spec: AppRelease, runtime?: DesktopRuntime) {
   const name = portableAppName(spec.name);
   const library = appsDirectory(app.getPath("appData"));
   const profile = repositoryProfileId(spec, repository);
@@ -344,8 +385,8 @@ export async function installPackagedLinuxProject(repository: string, spec: AppR
   await mkdir(directory, { recursive: true });
   const icon = await writeProjectIcon(directory, spec);
   const argument = desktopProjectArgument + repository;
-  await writeLinuxShortcut(name, profile, argument, icon);
-  await launchDesktopApp([argument], app.getAppPath());
+  await writeLinuxShortcut(name, profile, argument, icon, runtime?.executable);
+  await launchDesktopApp([argument], runtime?.appDirectory ?? app.getAppPath(), runtime?.executable);
 }
 
 export async function installDesktopApp(repository: string, spec: AppRelease, open: boolean) {

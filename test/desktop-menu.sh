@@ -2,7 +2,7 @@
 set -euo pipefail
 
 root=${1%/}
-entry="$root/usr/share/applications/morka.desktop"
+entry="$root/usr/share/applications/$2.desktop"
 if ! test -f "$entry" || ! test -r "$entry" || ! test "$(stat -c '%a' "$entry")" = 644; then
   echo "The Morka desktop entry must be readable by all desktop users: $entry" >&2
   exit 1

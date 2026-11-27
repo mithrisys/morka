@@ -17,10 +17,14 @@ const { snapshot, entryFile } = local("./dist/project/files.js");
 const { starterManifest, jsonFile } = local("./dist/project/project.js");
 const { bundledToolchain } = local("./dist/project/toolchain.js");
 const { writableTree } = local("./dist/project/packages.js");
+const { readDesktopRuntime } = local("./dist/instances/desktop-runtimes.js");
 const work = await realpath(await mkdtemp(join(tmpdir(), "morka-download-")));
-const spec = { version: 1, id: randomUUID(), name: "Release Smoke", iconColor: 0 };
 let child, profile;
 try {
+  const desktop = await readDesktopRuntime(resources);
+  assert.ok(desktop, "The download must register as a desktop runtime");
+  assert.equal(await realpath(executable), await realpath(desktop.executable));
+  const spec = { version: 1, id: randomUUID(), name: "Release Smoke", iconColor: 0, runtimeVersion: desktop.version };
   if (process.platform !== "darwin") {
     const locales = await readdir(join(resources, "../locales"));
     assert.ok(locales.includes("en-US.pak") && locales.every(name => /^en(?:-[A-Z]+)?\.pak$/.test(name)));
@@ -51,8 +55,8 @@ try {
   const files = await snapshot(join(appRoot, "dist/app-runtime/starter"));
   files.set(entryFile, jsonFile(starterManifest));
   const repo = await materializeRepository(work, spec, files, join(resources, bundledKit), await readFile(join(appRoot, "dist/branding/Morka.icns")));
-  const env = { ...process.env, MORKA_NPM_REPOSITORY: repo, XDG_CONFIG_HOME: work };
-  for (const key of ["MORKA_LOCAL_NODE", "MORKA_LOCAL_NPM", "MORKA_NPM_KIT", "MORKA_DESKTOP_TOOLCHAIN", "ELECTRON_RUN_AS_NODE"]) delete env[key];
+  const env = { ...process.env, XDG_CONFIG_HOME: work };
+  for (const key of ["MORKA_NPM_REPOSITORY", "MORKA_LOCAL_NODE", "MORKA_LOCAL_NPM", "MORKA_NPM_KIT", "MORKA_DESKTOP_TOOLCHAIN", "ELECTRON_RUN_AS_NODE"]) delete env[key];
   const appData = process.platform === "darwin" ? join(homedir(), "Library/Application Support")
     : process.platform === "win32" ? process.env.APPDATA : work;
   profile = join(appsDirectory(appData), "instances", repositoryProfileId(spec, repo));
@@ -62,11 +66,7 @@ try {
   await new Promise((done, fail) => probe.once("error", fail).listen(0, "127.0.0.1", done));
   const debugPort = probe.address().port;
   await new Promise(done => probe.close(done));
-  const args = ["--remote-debugging-address=127.0.0.1", `--remote-debugging-port=${debugPort}`];
-  if (process.platform === "linux" || process.platform === "win32") {
-    delete env.MORKA_NPM_REPOSITORY;
-    args.push(`--morka-project=${repo}`);
-  }
+  const args = ["--remote-debugging-address=127.0.0.1", `--remote-debugging-port=${debugPort}`, `--morka-project=${repo}`];
   child = spawn(executable, args, {
     cwd: work, env, stdio: "inherit",
   });

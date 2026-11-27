@@ -4,6 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, realpath, rename, rm, rmdir, writeFile } 
 import { join } from "node:path";
 import { applyFiles, info, type Files } from "../project/files";
 import { jsonFile } from "../project/project";
+import { isRuntimeVersion } from "./desktop-runtimes";
 
 export const idPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 export const repositoryConfig = [".morka", "release.json"];
@@ -27,6 +28,7 @@ export type AppRelease = {
   id: string;
   name: string;
   iconColor: number;
+  runtimeVersion?: string;
   clonedFrom?: { id: string; revision: string };
 };
 
@@ -61,12 +63,15 @@ export function readRelease(path: string): AppRelease {
       spec.name !== appName(spec.name) || !Number.isInteger(spec.iconColor) || spec.iconColor < 0 || spec.iconColor >= 8) {
     throw new Error("Invalid Morka release configuration.");
   }
-  const { id, name, iconColor, clonedFrom } = spec;
+  const { id, name, iconColor, clonedFrom, runtimeVersion } = spec;
+  if (runtimeVersion !== undefined && !isRuntimeVersion(runtimeVersion)) {
+    throw new Error("The Morka runtime version must be an exact release version.");
+  }
   if (clonedFrom && (!idPattern.test(clonedFrom.id) || !/^[a-f0-9]{64}$/.test(clonedFrom.revision))) {
     throw new Error("Invalid Morka clone origin.");
   }
   portableAppName(name);
-  return { version: 1, id, name, iconColor, ...(clonedFrom ? {
+  return { version: 1, id, name, iconColor, ...(runtimeVersion ? { runtimeVersion } : {}), ...(clonedFrom ? {
     clonedFrom: { id: clonedFrom.id, revision: clonedFrom.revision },
   } : {}) };
 }
@@ -146,7 +151,7 @@ export async function writeRepository(directory: string, spec: AppRelease, files
   const config = join(directory, ".morka");
   const name = repositorySlug(spec.name) || `morka-app-${spec.id.slice(0, 8)}`;
   const scripts = { start: "morka run", build: "morka-pack local-build",
-    "package:mac": "morka-pack package:mac", "install:app": "node .morka/npm/install-app.cjs" };
+    "package:mac": "node .morka/npm/package-mac.cjs", "install:app": "node .morka/npm/install-app.cjs" };
   const localInstructions = `## Run locally
 
 Install Node.js 24 or newer with npm on macOS, Windows, or Linux.
@@ -164,7 +169,8 @@ You can also open this folder with **or wake up a morka…** in the Morka launch
 To create a local launch script, run
 \`npm run build\` after installing the dependencies. The generated script lives
 in \`dist/\` and opens this checkout. On macOS, run \`npm run package:mac\`
-for a self-contained build.
+for a self-contained build. A pinned project uses the registered desktop
+runtime for that version.
 
 Use the app package's test script for its fast behavior checks. Run \`/review\` in Morka chat to exercise its preview scenario with synthetic data.
 
@@ -173,6 +179,8 @@ local CLI. Your account, chats and app data are stored outside the repository.
 
 Commit the app source, lockfiles and .morka/ to share this repo. The root
 package.json pins the published Morka runtime and packager versions.
+For desktop launches, .morka/release.json can specify an exact Morka
+version in runtimeVersion. Install and open that Morka version to register it.
 `;
   await writeRepositoryScaffold(directory, name, kit, scripts, `# ${spec.name}
 

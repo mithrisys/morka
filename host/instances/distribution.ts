@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { cp, copyFile, mkdir, mkdtemp, open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { applyFiles, info, snapshot } from "../project/files";
@@ -10,6 +11,7 @@ import { bundleToolchain } from "../project/bundle-toolchain";
 import { compileProject, jsonFile } from "../project/project";
 import { AppPackages, sealArtifactDirectory, writableTree } from "../project/packages";
 import { appIcon, appsDirectory, bundledKit, preparedRelease, readRelease, releaseFile, releaseProject, repositoryFile, repositoryProject, type AppRelease } from "./repository";
+import { desktopRuntimeFile, requireDesktopRuntime, writeDesktopRuntime, type DesktopRuntime } from "./desktop-runtimes";
 
 const run = promisify(execFile);
 
@@ -118,7 +120,8 @@ async function keepEnglishLocalizations(directory: string) {
     .map(entry => rm(join(directory, entry.name), { recursive: true })));
 }
 
-export async function writeDesktopResources(engine: string, resources: string, name: string, kit: string, toolchain?: string) {
+export async function writeDesktopResources(engine: string, resources: string, name: string, kit: string,
+  toolchain?: string, desktopName?: string) {
   const metadata = JSON.parse(await readFile(join(engine, "package.json"), "utf8"));
   const app = join(resources, "app");
   await mkdir(app);
@@ -127,7 +130,7 @@ export async function writeDesktopResources(engine: string, resources: string, n
     productName: name,
     version: metadata.version,
     main: "dist/electron/main.js",
-    ...(process.platform === "linux" ? { desktopName: metadata.desktopName } : {}),
+    ...(process.platform === "linux" ? { desktopName: desktopName ?? metadata.desktopName } : {}),
   }));
   const dist = join(engine, "dist");
   await cp(dist, join(app, "dist"), { recursive: true, filter: path => ![join(dist, "npm"), join(dist, "archives"), join(dist, "toolchain")].includes(path) });
@@ -139,16 +142,46 @@ export async function writeDesktopResources(engine: string, resources: string, n
   await copyFile(join(engine, "LICENSE"), join(app, "LICENSE"));
 }
 
+type MacRelease = { spec: AppRelease; repository: string; packagesHome: string };
+
+async function prepareMacRelease(resources: string, release: MacRelease, toolchain: string) {
+  const project = await snapshot(await repositoryProject(release.repository));
+  await compileProject(project);
+  const seed = join(resources, releaseProject);
+  await mkdir(seed);
+  await applyFiles(seed, new Map(), project);
+  await writeFile(join(resources, releaseFile), jsonFile(release.spec));
+  await copyFile(repositoryFile(release.repository, "icons", appIcon), join(resources, appIcon));
+  const manager = new AppPackages(release.packagesHome, toolchain);
+  const prepared = await manager.prepare(project);
+  const destination = join(resources, preparedRelease);
+  await cp(dirname(prepared.directory), destination, { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
+  await writableTree(destination);
+  await signNativeFiles(join(destination, "app"));
+  if ((await info(join(destination, "home")))?.isDirectory()) await signNativeFiles(join(destination, "home"));
+  await sealArtifactDirectory(join(destination, "app"));
+}
+
+async function identifyMacBundle(contents: string, version: string, spec?: AppRelease) {
+  await setBundleIdentity(join(contents, "Info.plist"), {
+    CFBundleExecutable: "Morka",
+    CFBundleName: spec?.name ?? "Morka",
+    CFBundleDisplayName: spec?.name ?? "Morka",
+    CFBundleDevelopmentRegion: "en",
+    CFBundleIdentifier: spec ? `local.morka.app.${spec.id}` : `local.morka.runtime.${version}`,
+    CFBundleShortVersionString: version,
+    CFBundleVersion: version.split("-")[0],
+    CFBundleIconFile: appIcon,
+  });
+}
+
 export async function buildMacBundle(
-  engine: string, bundle: string, kit: string,
-  release?: { spec: AppRelease; repository: string; packagesHome: string },
+  engine: string, bundle: string, kit: string, release?: MacRelease,
   releaseVersion?: string,
   toolchain = join(engine, "dist", "toolchain"),
 ) {
   if (process.platform !== "darwin") throw new Error("This release currently supports building on macOS.");
   const spec = release?.spec;
-  const project = release && await snapshot(await repositoryProject(release.repository));
-  if (project) await compileProject(project);
   const metadata = JSON.parse(await readFile(join(engine, "package.json"), "utf8"));
   const local = createRequire(join(engine, "package.json"));
   const electron = join(local("electron"), "../../..");
@@ -168,44 +201,57 @@ export async function buildMacBundle(
     await run("/usr/bin/clang", ["-fobjc-arc", "-framework", "AppKit", "-mmacosx-version-min=12.0",
       "-arch", process.arch === "arm64" ? "arm64" : "x86_64", join(engine, "host", "instances", "project-launcher.m"),
       "-o", join(app, "dist", "instances", "MorkaProject")]);
+    await writeDesktopRuntime(resources, metadata.version, "Morka");
   }
   await copyFile(join(dirname(electron), "LICENSE"), join(resources, "LICENSE.electron.txt"));
   await copyFile(join(dirname(electron), "LICENSES.chromium.html"), join(resources, "LICENSES.chromium.html"));
   await rm(join(resources, "default_app.asar"), { force: true });
   await rename(join(contents, "MacOS", "Electron"), join(contents, "MacOS", "Morka"));
   await copyFile(join(dist, "branding", "Morka.icns"), join(resources, appIcon));
-  if (release && project) {
-    const seed = join(resources, releaseProject);
-    await mkdir(seed);
-    await applyFiles(seed, new Map(), project);
-    await writeFile(join(resources, releaseFile), jsonFile(release.spec));
-    await copyFile(repositoryFile(release.repository, "icons", appIcon), join(resources, appIcon));
-    const manager = new AppPackages(release.packagesHome, toolchain);
-    const prepared = await manager.prepare(project);
-    const destination = join(resources, preparedRelease);
-    await cp(dirname(prepared.directory), destination, { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
-    await writableTree(destination);
-    await signNativeFiles(join(destination, "app"));
-    if ((await info(join(destination, "home")))?.isDirectory()) await signNativeFiles(join(destination, "home"));
-    await sealArtifactDirectory(join(destination, "app"));
-  }
+  if (release) await prepareMacRelease(resources, release, toolchain);
   await signNativeFiles(join(app, "dist", "toolchain"));
-  await setBundleIdentity(join(contents, "Info.plist"), {
-    CFBundleExecutable: "Morka",
-    CFBundleName: name,
-    CFBundleDisplayName: name,
-    CFBundleDevelopmentRegion: "en",
-    CFBundleIdentifier: spec ? `local.morka.app.${spec.id}` : "local.morka",
-    CFBundleShortVersionString: releaseVersion ?? metadata.version,
-    CFBundleVersion: (releaseVersion ?? metadata.version).split("-")[0],
-    CFBundleIconFile: appIcon,
-  });
+  await identifyMacBundle(contents, releaseVersion ?? metadata.version, spec);
   await signBundle(bundle, true);
 }
 
-export async function buildMacRelease(engine: string, repository: string) {
+export async function buildMacRelease(engine: string, repository: string,
+  library = appsDirectory(join(homedir(), "Library", "Application Support"))) {
   if (process.platform !== "darwin") throw new Error("Build the macOS package on a Mac.");
   const spec = readRelease(repositoryFile(repository, "release.json"));
+  if (spec.runtimeVersion) {
+    const runtime = await requireDesktopRuntime(library, spec.runtimeVersion);
+    const local = createRequire(join(runtime.appDirectory, "package.json"));
+    // Prepare the release using the same Morka code that will open it.
+    const { exportDesktopMacRelease } = local("./dist/instances/distribution.js") as typeof import("./distribution");
+    return exportDesktopMacRelease(runtime, repository, spec);
+  }
+  return publishMacRelease(repository, spec, async (bundle, stage, version) => {
+    const toolchain = join(stage, "toolchain");
+    await bundleToolchain(toolchain);
+    await buildMacBundle(engine, bundle, repositoryFile(repository, "npm"),
+      { spec, repository, packagesHome: join(stage, "packages") }, version, toolchain);
+  });
+}
+
+export async function exportDesktopMacRelease(runtime: DesktopRuntime, repository: string, spec: AppRelease) {
+  return publishMacRelease(repository, spec, async (bundle, stage, version) => {
+    await run("/usr/bin/ditto", [resolve(runtime.resources, "../.."), bundle]);
+    const contents = join(bundle, "Contents");
+    const resources = join(contents, "Resources");
+    const app = join(resources, "app");
+    const manifest = join(app, "package.json");
+    const metadata = JSON.parse(await readFile(manifest, "utf8"));
+    await writeFile(manifest, jsonFile({ ...metadata, productName: spec.name }));
+    await rm(join(resources, desktopRuntimeFile));
+    await rm(join(app, "dist", "instances", "MorkaProject"));
+    await prepareMacRelease(resources, { spec, repository, packagesHome: join(stage, "packages") }, join(app, "dist", "toolchain"));
+    await identifyMacBundle(contents, version, spec);
+    await signBundle(bundle, true);
+  });
+}
+
+async function publishMacRelease(repository: string, spec: AppRelease,
+  build: (bundle: string, stage: string, version: string) => Promise<void>) {
   const metadata = JSON.parse(await readFile(join(repository, "package.json"), "utf8"));
   const output = join(repository, "dist");
   const destination = join(output, `${spec.name}.app`);
@@ -216,10 +262,7 @@ export async function buildMacRelease(engine: string, repository: string) {
   let savedPrevious = false;
   let keepStage = false;
   try {
-    const toolchain = join(stage, "toolchain");
-    await bundleToolchain(toolchain);
-    await buildMacBundle(engine, bundle, repositoryFile(repository, "npm"),
-      { spec, repository, packagesHome: join(stage, "packages") }, metadata.version, toolchain);
+    await build(bundle, stage, metadata.version);
     if (await info(destination)) {
       const existing = readRelease(join(destination, "Contents", "Resources", releaseFile));
       if (existing.id !== spec.id) throw new Error("The build destination belongs to another app.");

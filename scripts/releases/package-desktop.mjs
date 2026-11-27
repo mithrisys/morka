@@ -93,17 +93,19 @@ try {
           extraMetadata: { desktopName: `${linuxExecutable}.desktop` },
           directories: { output: stage },
           linux: {
-            executableName: linuxExecutable, packageName: linuxExecutable,
+            executableName: linuxExecutable,
             icon: join(resources, "app/dist/branding/morka-icon.png"),
             category: "Development", syncDesktopName: true,
             desktop: { entry: { Icon: `/opt/${product}/resources/app/dist/branding/morka-icon.png` } },
             maintainer: "Morka <74207454+mithrisys@users.noreply.github.com>",
           },
           deb: {
+            packageName: linuxExecutable,
             artifactName: assets.deb,
             fpm: ["--depends", "libgbm1", "--depends", "libasound2 | libasound2t64"],
           },
           rpm: {
+            packageName: linuxExecutable,
             artifactName: assets.rpm,
             fpm: ["--depends", "mesa-libgbm", "--depends", "alsa-lib", "--depends", "libsecret"],
           },

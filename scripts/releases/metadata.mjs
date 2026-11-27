@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { runtimeContract } from "../../host/instances/runtime-compatibility.ts";
 
 export function releaseNotes(changelog, version) {
   const sections = changelog.replaceAll("\r\n", "\n").split(/^## /m).slice(1);
@@ -28,27 +29,54 @@ export function desktopAssets(version) {
   };
 }
 
+function updateChannel(version) {
+  return version.match(/^[^-]+-([^.]+)/)?.[1] ?? "latest";
+}
+
 export function macUpdateAssets(version) {
-  const channel = version.match(/^[^-]+-([^.]+)/)?.[1] ?? "latest";
-  return { zip: `morka-${version}-macOS-arm64.zip`, feed: `${channel}-mac.yml` };
+  return { zip: `morka-${version}-macOS-arm64.zip`, feed: `${updateChannel(version)}-mac.yml` };
 }
 
 export async function writeMacUpdateMetadata(directory, version, supportedRuntimeApis) {
   const { zip, feed } = macUpdateAssets(version);
-  const archive = join(directory, zip);
-  const { size } = await stat(archive);
-  const digest = createHash("sha512");
-  for await (const chunk of createReadStream(archive)) digest.update(chunk);
+  await writeUpdateFeed(directory, feed, version, supportedRuntimeApis, [zip]);
+}
+
+function desktopUpdateFeeds(version) {
+  const channel = updateChannel(version);
+  return { windows: `${channel}.yml`, linuxX64: `${channel}-linux.yml`, linuxArm64: `${channel}-linux-arm64.yml` };
+}
+
+export async function writeDesktopUpdateMetadata(directory, version, supportedRuntimeApis, signedWindows = false) {
+  const assets = desktopAssets(version);
+  const feeds = desktopUpdateFeeds(version);
+  await writeUpdateFeed(directory, feeds.linuxX64, version, supportedRuntimeApis, Object.values(assets["linux-x64"]));
+  await writeUpdateFeed(directory, feeds.linuxArm64, version, supportedRuntimeApis, Object.values(assets["linux-arm64"]));
+  if (signedWindows) await writeUpdateFeed(directory, feeds.windows, version, supportedRuntimeApis,
+    [assets["win32-x64"].nsis, assets["win32-arm64"].nsis]);
+}
+
+async function writeUpdateFeed(directory, feed, version, supportedRuntimeApis, names) {
+  const files = [];
+  for (const url of names) {
+    const archive = join(directory, url);
+    const { size } = await stat(archive);
+    const digest = createHash("sha512");
+    for await (const chunk of createReadStream(archive)) digest.update(chunk);
+    files.push({ url, size, sha512: digest.digest("base64") });
+  }
   // JSON is a subset of YAML and is accepted by electron-updater's metadata reader.
-  const metadata = { version, supportedRuntimeApis, files: [{ url: zip, size, sha512: digest.digest("base64") }] };
+  const metadata = { version, supportedRuntimeApis, files };
   await writeFile(join(directory, feed), JSON.stringify(metadata, null, 2) + "\n");
 }
 
 export async function writeChecksums(directory, version) {
   const expected = Object.values(desktopAssets(version)).flatMap(Object.values);
   const entries = (await readdir(directory)).filter(name => name !== "SHA256SUMS.txt").sort();
-  const update = Object.values(macUpdateAssets(version));
-  if (update.some(name => entries.includes(name))) expected.push(...update);
+  const { windows, linuxX64, linuxArm64 } = desktopUpdateFeeds(version);
+  for (const update of [Object.values(macUpdateAssets(version)), [linuxX64, linuxArm64], [windows]]) {
+    if (update.some(name => entries.includes(name))) expected.push(...update);
+  }
   expected.sort();
   if (JSON.stringify(entries) !== JSON.stringify(expected)) throw new Error("Expected exactly the downloads for each supported desktop target and package format.");
   const lines = [];
@@ -62,6 +90,8 @@ export async function writeChecksums(directory, version) {
 
 if (import.meta.main) {
   const { version } = JSON.parse(await readFile("package.json", "utf8"));
+  await writeDesktopUpdateMetadata(process.argv[2], version, runtimeContract.supportedRuntimeApis,
+    process.env.MORKA_WINDOWS_UPDATES === "true");
   await writeChecksums(process.argv[2], version);
   await writeFile(process.argv[3], releaseNotes(await readFile("CHANGELOG.md", "utf8"), version));
 }

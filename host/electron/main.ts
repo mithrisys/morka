@@ -1,8 +1,8 @@
 import { reviewScenario } from "./scenario-review";
-import { runningProject, updatesForLauncher } from "./macos-updates";
+import { runningProject, updatesForLauncher } from "./desktop-updates";
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from "electron";
 import { createHash, randomInt, randomUUID } from "node:crypto";
-import { mkdirSync, statSync } from "node:fs";
+import { mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -21,7 +21,7 @@ import { AgentRegistry } from "../agents/registry";
 import { makeIcon, projectIcon, type AppInstance } from "../instances/macos";
 import { currentDesktopRuntime, installDesktopApp, installRepository, launchDesktopApp, openInstalledProject,
   projectRuntimeVersion, registerCurrentDesktopRuntime } from "../instances/desktop";
-import { desktopProjectArgument, readMacProjectLaunch } from "../instances/desktop-runtimes";
+import { desktopProjectArgument, desktopAppId, readMacProjectLaunch, windowsProjectPidFile } from "../instances/desktop-runtimes";
 import { prepareMacProjectExecutable } from "../instances/distribution";
 import { legacyRuntimeApi, runtimeCompatibility, starterRuntime } from "../instances/runtime-compatibility";
 import { planRuntimeUpgrade, upgradeProjectRuntime, type RuntimeUpgradePlan } from "../instances/runtime-upgrades";
@@ -110,8 +110,8 @@ async function createLauncher() {
   };
   const library = appsDirectory(app.getPath("appData"));
   const macDesktop = app.isPackaged && process.platform === "darwin";
-  const updates = await updatesForLauncher(macDesktop ? await currentDesktopRuntime() : undefined, state => {
-    if (!contents.isDestroyed()) contents.send("mac-update:state", state);
+  const updates = await updatesForLauncher(app.isPackaged ? await currentDesktopRuntime() : undefined, state => {
+    if (!contents.isDestroyed()) contents.send("desktop-update:state", state);
   });
   const updating = () => updates?.state.status === "installing";
   const creating = registerInstaller(window, requireLauncher, async () => {
@@ -155,12 +155,12 @@ async function createLauncher() {
   });
   window.on("close", event => { if (waking) event.preventDefault(); });
   window.once("closed", () => ipcMain.removeHandler("instance:wake"));
-  ipcMain.handle("mac-update:state", event => { requireLauncher(event); return updates?.state; });
-  ipcMain.handle("mac-update:check", event => { requireLauncher(event); return updates?.check(); });
-  ipcMain.handle("mac-update:download", event => { requireLauncher(event); return updates?.download(); });
-  ipcMain.handle("mac-update:restart", event => {
+  ipcMain.handle("desktop-update:state", event => { requireLauncher(event); return updates?.state; });
+  ipcMain.handle("desktop-update:check", event => { requireLauncher(event); return updates?.check(); });
+  ipcMain.handle("desktop-update:download", event => { requireLauncher(event); return updates?.download(); });
+  ipcMain.handle("desktop-update:install", event => {
     requireLauncher(event);
-    return updates?.restart(async () => {
+    return updates?.install(async () => {
       if (creating() || waking) throw new Error("Wait for the project to finish opening, then try again.");
       if (await runningProject(library)) throw new Error("Close your open projects to install the update.");
     });
@@ -168,7 +168,7 @@ async function createLauncher() {
   let checkTimer: ReturnType<typeof setInterval> | undefined;
   window.once("closed", () => {
     clearInterval(checkTimer);
-    for (const channel of ["mac-update:state", "mac-update:check", "mac-update:download", "mac-update:restart"]) ipcMain.removeHandler(channel);
+    for (const channel of ["desktop-update:state", "desktop-update:check", "desktop-update:download", "desktop-update:install"]) ipcMain.removeHandler(channel);
   });
   await window.loadFile(index);
   if (macDesktop) await registerCurrentDesktopRuntime();
@@ -827,13 +827,18 @@ async function start() {
   app.setPath("userData", data);
   app.setName(instance?.name ?? "Morka");
   if (!instance && !macBundle) {
-    const runtime = await registerCurrentDesktopRuntime();
-    if (process.platform === "win32") app.setAppUserModelId(runtime ? `local.morka.desktop.${runtime.version}` : "local.morka.desktop");
+    await registerCurrentDesktopRuntime();
+    if (process.platform === "win32") app.setAppUserModelId(desktopAppId);
   }
 
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return;
+  }
+  if (process.platform === "win32" && instance) {
+    const lock = join(data, windowsProjectPidFile);
+    writeFileSync(lock, String(process.pid));
+    app.once("quit", () => rmSync(lock, { force: true }));
   }
   const focusWindow = () => {
     const [window] = BrowserWindow.getAllWindows();

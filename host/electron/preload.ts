@@ -6,11 +6,11 @@ if (process.isMainFrame) {
     installApp: (name: string): Promise<AppInstallResult | undefined> => ipcRenderer.invoke("instance:install", name),
     wakeProject: (kind: ProjectSourceKind, gitUrl?: string): Promise<{ error: string } | undefined> =>
       ipcRenderer.invoke("instance:wake", kind, gitUrl),
-    macUpdateState: (): Promise<MacUpdateState | undefined> => ipcRenderer.invoke("mac-update:state"),
-    checkMacUpdate: (): Promise<void> => ipcRenderer.invoke("mac-update:check"),
-    downloadMacUpdate: (): Promise<void> => ipcRenderer.invoke("mac-update:download"),
-    restartForMacUpdate: (): Promise<void> => ipcRenderer.invoke("mac-update:restart"),
-    onMacUpdate: (listener: (state: MacUpdateState) => void) => ipcRenderer.on("mac-update:state", (_event, state) => listener(state)),
+    desktopUpdateState: (): Promise<DesktopUpdateState | undefined> => ipcRenderer.invoke("desktop-update:state"),
+    checkDesktopUpdate: (): Promise<void> => ipcRenderer.invoke("desktop-update:check"),
+    downloadDesktopUpdate: (): Promise<void> => ipcRenderer.invoke("desktop-update:download"),
+    installDesktopUpdate: (): Promise<void> => ipcRenderer.invoke("desktop-update:install"),
+    onDesktopUpdate: (listener: (state: DesktopUpdateState) => void) => ipcRenderer.on("desktop-update:state", (_event, state) => listener(state)),
     getPreview: (): Promise<string | undefined> => ipcRenderer.invoke("canvas:current"),
     onPreview: (listener: (url?: string) => void) => {
       ipcRenderer.on("canvas:update", (_event, url) => listener(url));

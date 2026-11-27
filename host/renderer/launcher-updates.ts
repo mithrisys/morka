@@ -1,9 +1,9 @@
 const updatePanel = document.querySelector<HTMLElement>("#launcher-update")!;
 const updateStatus = document.querySelector<HTMLElement>("#launcher-update-status")!;
 const updateButton = document.querySelector<HTMLButtonElement>("#launcher-update-action")!;
-let state: MacUpdateState | undefined;
+let state: DesktopUpdateState | undefined;
 
-function renderUpdate(next?: MacUpdateState) {
+function renderUpdate(next?: DesktopUpdateState) {
   state = next;
   updatePanel.hidden = !next;
   if (!next) return;
@@ -24,11 +24,12 @@ function renderUpdate(next?: MacUpdateState) {
         : `Downloading ${next.version} (${next.percent}%)…`;
       break;
     case "ready":
-      actionLabel = "Restart to update";
-      updateStatus.textContent = next.detail ?? `Morka ${next.version} is ready to install.`;
+      actionLabel = next.action === "open" ? "Open installer" : next.action === "show" ? "Show download" : "Restart to update";
+      updateStatus.textContent = next.detail ?? (next.action === "show" ? `Morka ${next.version} has been downloaded. Extract it to install the update.`
+        : `Morka ${next.version} is ready to install.`);
       break;
     case "installing":
-      actionLabel = "Restart to update";
+      actionLabel = next.action === "open" ? "Open installer" : next.action === "show" ? "Show download" : "Restart to update";
       updateStatus.textContent = `Preparing to install ${next.version}…`;
       break;
     case "error": updateStatus.textContent = next.detail; break;
@@ -37,15 +38,15 @@ function renderUpdate(next?: MacUpdateState) {
 }
 
 let receivedUpdate = false;
-window.lab.onMacUpdate(next => {
+window.lab.onDesktopUpdate(next => {
   receivedUpdate = true;
   renderUpdate(next);
 });
-void window.lab.macUpdateState().then(next => { if (!receivedUpdate) renderUpdate(next); }).catch(console.error);
+void window.lab.desktopUpdateState().then(next => { if (!receivedUpdate) renderUpdate(next); }).catch(console.error);
 updateButton.addEventListener("click", () => {
   let action: Promise<void>;
-  if (state?.status === "available") action = window.lab.downloadMacUpdate();
-  else if (state?.status === "ready") action = window.lab.restartForMacUpdate();
-  else action = window.lab.checkMacUpdate();
+  if (state?.status === "available") action = window.lab.downloadDesktopUpdate();
+  else if (state?.status === "ready") action = window.lab.installDesktopUpdate();
+  else action = window.lab.checkDesktopUpdate();
   void action.catch(error => { updateStatus.textContent = error instanceof Error ? error.message : String(error); });
 });

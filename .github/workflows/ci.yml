@@ -63,10 +63,13 @@ jobs:
           node -e "require('electron')"
           sudo chown root:root node_modules/electron/dist/chrome-sandbox
           sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+          xvfb-run -a npm run test:updates:electron
           xvfb-run -a npm run test:preview
       - name: Test live preview
         if: runner.os != 'Linux'
-        run: npm run test:preview
+        run: |
+          npm run test:updates:electron
+          npm run test:preview
       - name: Test macOS packaging and installation
         if: runner.os == 'macOS'
         run: |

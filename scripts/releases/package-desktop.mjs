@@ -6,12 +6,13 @@ import { desktopAssets, macUpdateAssets, writeMacUpdateMetadata } from "./metada
 import { macSigningConfig, signAndNotarizeMacUpdate } from "./macos-signing.mjs";
 
 const require = createRequire(import.meta.url);
-const { buildMacBundle, configureMacDesktopUpdates, writeDesktopResources } = require("../../dist/instances/distribution.js");
-const { writeDesktopRuntime } = require("../../dist/instances/desktop-runtimes.js");
+const { buildMacBundle, configureMacDesktopUpdates, bundleDesktopUpdater,
+  writeDesktopResources, writeDesktopUpdateConfig } = require("../../dist/instances/distribution.js");
+const { desktopAppId, writeDesktopRuntime } = require("../../dist/instances/desktop-runtimes.js");
+const { verifyWindowsUpdate } = require("../../dist/electron/desktop-updates.js");
 const { checkStarterRuntime, runtimeContract } = require("../../dist/instances/runtime-compatibility.js");
 const { version } = JSON.parse(await readFile("package.json", "utf8"));
 const product = `Morka-${version}`;
-const linuxExecutable = `morka-${version.toLowerCase()}`;
 const target = `${process.platform}-${process.arch}`;
 const assets = desktopAssets(version)[target];
 if (!assets) throw new Error(`No release target for ${target}.`);
@@ -48,7 +49,7 @@ try {
   } else {
     checkStarterRuntime(version);
     const windows = process.platform === "win32";
-    const executable = windows ? `${product}.exe` : linuxExecutable;
+    const executable = windows ? "Morka.exe" : "morka";
     const app = join(image, "morka");
     const electron = dirname(require("electron"));
     await cp(electron, app, {
@@ -58,10 +59,17 @@ try {
     const resources = join(app, "resources");
     await rm(join(resources, "default_app.asar"));
     await rename(join(app, windows ? "electron.exe" : "electron"), join(app, executable));
-    await writeDesktopResources(process.cwd(), resources, "Morka", kit, undefined, `${linuxExecutable}.desktop`);
+    await writeDesktopResources(process.cwd(), resources, "Morka", kit);
     await writeDesktopRuntime(resources, version, executable);
     const { build, Platform, Arch } = require("electron-builder");
     if (windows) {
+      const publisherName = process.env.MORKA_WINDOWS_PUBLISHER?.trim();
+      const signing = [publisherName, process.env.WIN_CSC_LINK, process.env.WIN_CSC_KEY_PASSWORD];
+      if (signing.some(Boolean) && !signing.every(Boolean)) throw new Error("Configure all Windows update signing credentials.");
+      if (publisherName) {
+        await bundleDesktopUpdater(process.cwd(), resources);
+        await writeDesktopUpdateConfig(resources, { format: "nsis", publisherName });
+      }
       const { convertIcon } = require("app-builder-lib/out/util/iconConverter");
       const { editWindowsResources } = require("app-builder-lib/out/util/resEdit");
       const { icons } = await convertIcon({
@@ -81,46 +89,48 @@ try {
         prepackaged: app,
         publish: "never",
         config: {
-          appId: `local.morka.desktop.${version}`, productName: product,
+          appId: desktopAppId, productName: "Morka", publish: null, forceCodeSigning: Boolean(publisherName),
           directories: { output: stage },
-          win: { icon: iconPath },
+          win: { icon: iconPath, ...(publisherName ? { signtoolOptions: { publisherName } } : {}) },
           nsis: {
             artifactName: assets.nsis, oneClick: false, perMachine: false, allowElevation: false,
             multiLanguageInstaller: false, runAfterFinish: false,
           },
         },
       });
+      if (publisherName) await verifyWindowsUpdate(join(stage, assets.nsis), publisherName);
     } else {
+      await bundleDesktopUpdater(process.cwd(), resources);
+      await writeDesktopUpdateConfig(resources, { format: "tar" });
       // Electron's archive may unpack with owner-only modes. System packages run as desktop users.
       run("chmod", ["-R", "a+rX,go-w", app]);
       run("tar", ["-czf", join(stage, assets.tar), "-C", image, "morka"]);
-      await build({
-        targets: Platform.LINUX.createTarget(["deb", "rpm"], Arch[process.arch]),
-        prepackaged: app,
-        publish: "never",
-        config: {
-          appId: `local.morka.desktop.${version}`, productName: product,
-          extraMetadata: { desktopName: `${linuxExecutable}.desktop` },
-          directories: { output: stage },
-          linux: {
-            executableName: linuxExecutable,
-            icon: join(resources, "app/dist/branding/morka-icon.png"),
-            category: "Development", syncDesktopName: true,
-            desktop: { entry: { Icon: `/opt/${product}/resources/app/dist/branding/morka-icon.png` } },
-            maintainer: "Morka <74207454+mithrisys@users.noreply.github.com>",
-          },
-          deb: {
-            packageName: linuxExecutable,
-            artifactName: assets.deb,
-            fpm: ["--depends", "libgbm1", "--depends", "libasound2 | libasound2t64"],
-          },
-          rpm: {
-            packageName: linuxExecutable,
-            artifactName: assets.rpm,
-            fpm: ["--depends", "mesa-libgbm", "--depends", "alsa-lib", "--depends", "libsecret"],
-          },
+      const config = {
+        appId: desktopAppId, productName: "Morka", publish: null,
+        extraMetadata: { desktopName: "morka.desktop" },
+        directories: { output: stage },
+        linux: {
+          executableName: executable,
+          icon: join(resources, "app/dist/branding/morka-icon.png"),
+          category: "Development", syncDesktopName: true,
+          desktop: { entry: { Icon: "/opt/Morka/resources/app/dist/branding/morka-icon.png" } },
+          maintainer: "Morka <74207454+mithrisys@users.noreply.github.com>",
         },
-      });
+        deb: {
+          packageName: "morka",
+          artifactName: assets.deb,
+          fpm: ["--depends", "libgbm1", "--depends", "libasound2 | libasound2t64"],
+        },
+        rpm: {
+          packageName: "morka",
+          artifactName: assets.rpm,
+          fpm: ["--depends", "mesa-libgbm", "--depends", "alsa-lib", "--depends", "libsecret"],
+        },
+      };
+      for (const format of ["deb", "rpm"]) {
+        await writeDesktopUpdateConfig(resources, { format });
+        await build({ targets: Platform.LINUX.createTarget(format, Arch[process.arch]), prepackaged: app, publish: "never", config });
+      }
     }
   }
   for (const asset of Object.values(assets)) {

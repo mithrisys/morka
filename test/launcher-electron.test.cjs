@@ -38,16 +38,19 @@ async function testLauncher() {
   let updateDownloads = 0;
   let updateInstalls = 0;
   let projectRunning = true;
-  const macUpdates = require("../dist/electron/macos-updates.js");
-  macUpdates.runningProject = async () => projectRunning;
+  const desktopUpdates = require("../dist/electron/desktop-updates.js");
+  desktopUpdates.runningProject = async () => projectRunning;
   updateClient.checkForUpdates = async () => ({ isUpdateAvailable: true,
-    updateInfo: { version: "1.1.0", supportedRuntimeApis: [1], files: [{ url: "morka-1.1.0-macOS-arm64.zip" }] } });
+    updateInfo: { version: "1.1.0", supportedRuntimeApis: [1], files: [
+      { url: "morka-1.1.0-macOS-arm64.zip", sha512: Buffer.alloc(64).toString("base64"), size: 1 },
+    ] } });
   updateClient.downloadUpdate = async () => { updateDownloads++; };
   updateClient.quitAndInstall = () => {
     updateInstalls++;
     updateClient.emit("error", new Error("Test installation stopped."));
   };
-  macUpdates.updatesForLauncher = async (_runtime, notify) => new macUpdates.MacUpdates(updateClient, "1.0.0", [1], notify);
+  desktopUpdates.updatesForLauncher = async (_runtime, notify) => new desktopUpdates.DesktopUpdates(updateClient, "1.0.0", [1], notify,
+    { arch: "arm64", format: "zip" });
   const installed = new Set();
   const launches = [];
   let failInstall = true;

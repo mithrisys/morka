@@ -1,8 +1,6 @@
 const assert = require("node:assert/strict");
 const { execFile, execFileSync } = require("node:child_process");
-const { once } = require("node:events");
 const { lstat, mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } = require("node:fs/promises");
-const { createServer } = require("node:http");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 const { setTimeout: delay } = require("node:timers/promises");
@@ -33,57 +31,6 @@ async function waitFor(check) {
       if (Date.now() >= deadline) throw error;
       await delay(100);
     }
-  }
-}
-
-async function testUpdateDownload(workspace) {
-  const { MacUpdater } = require("electron-updater");
-  const { MacUpdates } = require("../dist/electron/macos-updates.js");
-  const { macUpdateAssets, writeMacUpdateMetadata } = await import("../scripts/releases/metadata.mjs");
-  const version = "999.0.0";
-  const { feed, zip } = macUpdateAssets(version);
-  await writeFile(join(workspace, zip), "fixture update archive");
-  await writeMacUpdateMetadata(workspace, version, [1]);
-  const metadata = await readFile(join(workspace, feed));
-  const archive = await readFile(join(workspace, zip));
-  let corrupt = true;
-  let downloads = 0;
-  const server = createServer((request, response) => {
-    const path = new URL(request.url, "http://127.0.0.1").pathname;
-    if (path === `/${feed}`) { response.end(metadata); return; }
-    if (path === `/${zip}`) {
-      downloads++;
-      response.end(corrupt ? "corrupt update archive" : archive);
-      return;
-    }
-    response.writeHead(404).end();
-  });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  const client = new MacUpdater();
-  try {
-    client.logger = null;
-    client.forceDevUpdateConfig = true;
-    Object.defineProperty(client.app, "baseCachePath", { value: workspace });
-    const configuration = join(workspace, "update-provider.yml");
-    await writeFile(configuration, JSON.stringify({ provider: "generic", url: `http://127.0.0.1:${server.address().port}`,
-      updaterCacheDirName: "updater-fixture" }));
-    client.updateConfigPath = configuration;
-    const updates = new MacUpdates(client, "1.0.0", [1], () => {});
-    await updates.check();
-    assert.deepEqual(updates.state, { status: "available", version });
-    assert.equal(downloads, 0);
-    await updates.download();
-    assert.equal(updates.state.status, "available");
-    assert.match(updates.state.detail, /sha512|checksum/i);
-    corrupt = false;
-    await updates.download();
-    assert.deepEqual(updates.state, { status: "ready", version });
-    assert.equal(downloads, 2);
-    console.log("PASS: the native update adapter waits for download approval, rejects a corrupt archive, and stages a valid retry.");
-  } finally {
-    client.closeServerIfExists();
-    await new Promise(resolve => server.close(resolve));
   }
 }
 
@@ -350,7 +297,6 @@ let temporary;
   app.setPath("userData", profile);
   app.setActivationPolicy("prohibited");
   await app.whenReady();
-  await testUpdateDownload(temporary);
 
   const { installDesktopApp, openInstalledProject } = require("../dist/instances/desktop.js");
   const { makeIcon } = require("../dist/instances/macos.js");

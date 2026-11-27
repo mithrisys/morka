@@ -29,10 +29,10 @@ type AddonRequest =
 type AddonResult = { value?: unknown; error?: string };
 type AppInstallResult = { path: string; openError: string } | { error: string };
 type ProjectSourceKind = "folder" | "archive" | "git";
-type MacUpdateState = { status: "idle" | "checking" | "current" }
+type DesktopUpdateState = { status: "idle" | "checking" | "current" }
   | { status: "available"; version: string; detail?: string }
   | { status: "downloading"; version: string; percent?: number }
-  | { status: "ready" | "installing"; version: string; detail?: string }
+  | { status: "ready" | "installing"; version: string; detail?: string; action?: "open" | "show" }
   | { status: "error"; detail: string };
 
 interface Window {
@@ -40,11 +40,11 @@ interface Window {
     currentApp(): Promise<string | undefined>;
     installApp(name: string): Promise<AppInstallResult | undefined>;
     wakeProject(kind: ProjectSourceKind, gitUrl?: string): Promise<{ error: string } | undefined>;
-    macUpdateState(): Promise<MacUpdateState | undefined>;
-    checkMacUpdate(): Promise<void>;
-    downloadMacUpdate(): Promise<void>;
-    restartForMacUpdate(): Promise<void>;
-    onMacUpdate(listener: (state: MacUpdateState) => void): void;
+    desktopUpdateState(): Promise<DesktopUpdateState | undefined>;
+    checkDesktopUpdate(): Promise<void>;
+    downloadDesktopUpdate(): Promise<void>;
+    installDesktopUpdate(): Promise<void>;
+    onDesktopUpdate(listener: (state: DesktopUpdateState) => void): void;
     getPreview(): Promise<string | undefined>;
     onPreview(listener: (url?: string) => void): void;
     onPreviewUpdating(listener: (updating: boolean) => void): void;

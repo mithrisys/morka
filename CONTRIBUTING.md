@@ -49,6 +49,7 @@ For documentation-only changes, check links, commands, and examples. For a chang
 | `npm run test:apps` | Rerun the main suite against the current build. |
 | `npm run test:package:mac` | Verify signed macOS packaging and offline startup after a full build. |
 | `npm run test:preview` | Exercise live preview in Electron on all three platforms. On a headless Linux runner use `xvfb-run -a npm run test:preview`. |
+| `npm run test:updates:electron` | Exercise download approval, package selection and SHA-512 validation using a local release feed. On a headless Linux runner use `xvfb-run -a npm run test:updates:electron`. |
 | `npm run test:install:mac` | Exercise the signed macOS installer in Electron after a full build. |
 
 Run individual suites with `node --test test/<name>.test.cjs` after building. Runtime tests use temporary workspaces and loopback servers. The package lifecycle sandbox and bundled native-addon tests require macOS and Xcode Command Line Tools. On Linux and Windows the shared runtime tests use the local Node.js and npm installation.
@@ -78,7 +79,7 @@ For tagged builds, the prepare job resolves the starter lockfile against the exa
 
 After all native tests pass, the workflow stages the downloads and `SHA256SUMS.txt` in a draft GitHub Release. It publishes and verifies the runtime followed by the packager using npm Trusted Publishing, then makes the GitHub Release public. A prerelease version such as `0.3.0-beta.1` is marked as a GitHub prerelease and uses the npm `next` tag. Stable versions use `latest`. Pull requests build and test the downloads with read-only permissions. Release runs assemble the release metadata and upload the downloads to GitHub Releases.
 
-Release builds can sign and notarize macOS using these GitHub Actions secrets. Local builds and releases without these credentials use ad-hoc signing. The Windows installer has no publisher signature. Record signing limitations in the release notes.
+Release builds can sign and notarize macOS and sign Windows using these GitHub Actions secrets. Without the corresponding credentials, macOS uses ad-hoc signing and Windows uses an unsigned setup. Record signing limitations in the release notes.
 
 | Secret | Value |
 | --- | --- |
@@ -87,8 +88,15 @@ Release builds can sign and notarize macOS using these GitHub Actions secrets. L
 | `MORKA_MAC_NOTARY_KEY` | App Store Connect API private key file contents |
 | `MORKA_MAC_NOTARY_KEY_ID` | API key ID |
 | `MORKA_MAC_NOTARY_ISSUER` | API issuer ID |
+| `MORKA_WINDOWS_CERTIFICATE` | Base64-encoded PKCS#12 for Authenticode signing |
+| `MORKA_WINDOWS_CERTIFICATE_PASSWORD` | PKCS#12 export password |
+| `MORKA_WINDOWS_PUBLISHER` | The exact signer certificate subject as reported by `Get-AuthenticodeSignature` |
 
 When configured, macOS release jobs use the release workflow run number as the bundle build number. For a local signed `npm run package:desktop`, supply `MORKA_MAC_BUILD_NUMBER` as an increasing integer along with the signing variables. The signed DMG installs `Morka.app` and the public release also includes the signed app ZIP and updater metadata. Existing ad-hoc installations can move to automatic updates by installing the first signed DMG. Verify an update between two signed releases using an existing project launcher and its private profile. The normal PR build exercises update behavior with synthetic releases and keeps release credentials out of that build.
+
+Windows publishes an updater feed after both per-user NSIS installers have been signed and verified. For a local signed Windows build, set `WIN_CSC_LINK` to the PKCS#12 path, `WIN_CSC_KEY_PASSWORD` to its password, and `MORKA_WINDOWS_PUBLISHER` to its exact subject. First install a signed updater-enabled setup manually. Keep the publisher subject across releases so the installed launchers can verify later installers.
+
+Linux publishes one updater feed per architecture. Both native package formats use the stable `morka` package name and `/opt/Morka` installation location. Users approve the package download in Morka and the installation in their system package installer. The portable distribution downloads the new tarball for manual extraction. When verifying a release, exercise the same package format and architecture across versions and check that installed project shortcuts still reach the updated runtime.
 
 Each desktop download bundles a runnable Morka runtime and advertises the app contracts it supports in `host/instances/runtime-compatibility.ts`. A compatible release keeps its existing API support. When a release drops an app contract, add the required steps and guidance to `host/instances/runtime-upgrades.ts` and exercise an older checkout through the upgrade, including failure recovery. Keep the starter's minimum version and API supported by the embedded runtime.
 

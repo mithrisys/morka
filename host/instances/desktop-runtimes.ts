@@ -6,19 +6,23 @@ import { compareRuntimeVersions, isRuntimeApi, isRuntimeVersion, legacyRuntimeAp
   runtimeContract, type RuntimeContract, type RuntimeRequirement } from "./runtime-compatibility";
 
 export const desktopRuntimeFile = "morka-runtime.json";
+export const desktopAppId = "local.morka.desktop";
 export const desktopProjectArgument = "--morka-project=";
 export const macProjectLaunchFile = "morka-project-launch.json";
-export const macUpdateConfigFile = "app-update.yml";
+export const desktopUpdateConfigFile = "app-update.yml";
+export const windowsProjectPidFile = "morka-project.pid";
 
 export type DesktopRuntime = RuntimeContract & { version: string; resources: string; executable: string; appDirectory: string };
 
 export async function isProjectRunning(library: string, profile: string) {
-  const lock = await readlink(join(library, "instances", profile, "SingletonLock")).catch(error => {
+  const directory = join(library, "instances", profile);
+  const lock = await (process.platform === "win32" ? readFile(join(directory, windowsProjectPidFile), "utf8")
+    : readlink(join(directory, "SingletonLock"))).catch(error => {
     if (["ENOENT", "ENOTDIR"].includes(error.code)) return "";
     throw error;
   });
-  const pid = Number(/-(\d+)$/.exec(lock)?.[1]);
-  if (!pid) return false;
+  const pid = Number((process.platform === "win32" ? /^(\d+)$/ : /-(\d+)$/).exec(lock)?.[1]);
+  if (!Number.isSafeInteger(pid) || pid <= 0 || pid > 0x7fffffff) return false;
   try { process.kill(pid, 0); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;

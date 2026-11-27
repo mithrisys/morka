@@ -1,9 +1,38 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { releaseNotes, desktopAssets, writeChecksums } from "../scripts/releases/metadata.mjs";
+
+test("Windows and Linux release feeds include only assets for their platform and architecture", async t => {
+  const { writeDesktopUpdateMetadata } = await import("../scripts/releases/metadata.mjs");
+  const version = "1.2.3-beta.1";
+  const directory = await mkdtemp(join(tmpdir(), "morka-update-feeds-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const assets = desktopAssets(version);
+  for (const name of Object.values(assets).flatMap(Object.values)) await writeFile(join(directory, name), name);
+  await writeDesktopUpdateMetadata(directory, version, [1, 2]);
+  await assert.rejects(readFile(join(directory, "beta.yml")), { code: "ENOENT" });
+  await writeDesktopUpdateMetadata(directory, version, [1, 2], true);
+  for (const [feed, names] of [
+    ["beta.yml", [assets["win32-x64"].nsis, assets["win32-arm64"].nsis]],
+    ["beta-linux.yml", Object.values(assets["linux-x64"])],
+    ["beta-linux-arm64.yml", Object.values(assets["linux-arm64"])],
+  ]) {
+    const metadata = JSON.parse(await readFile(join(directory, feed), "utf8"));
+    assert.equal(metadata.version, version);
+    assert.deepEqual(metadata.supportedRuntimeApis, [1, 2]);
+    assert.deepEqual(metadata.files.map(file => file.url).sort(), names.sort());
+    for (const file of metadata.files) {
+      assert.equal(file.size, Buffer.byteLength(file.url));
+      assert.equal(file.sha512, createHash("sha512").update(file.url).digest("base64"));
+    }
+  }
+  await writeChecksums(directory, version);
+  assert.match(await readFile(join(directory, "SHA256SUMS.txt"), "utf8"), /beta-linux-arm64\.yml/);
+});
 
 test("release notes select one exact dated version and retain its subsections", () => {
   const log = "# Changelog\r\n## 1.0.0 (2026-11-20)\r\nFirst stable.\r\n## 1.0.0-beta.1 (2026-11-19)\r\n### Fixes\r\n\r\n- A fix.\r\n";

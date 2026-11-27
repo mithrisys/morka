@@ -11,7 +11,7 @@ import { bundleToolchain } from "../project/bundle-toolchain";
 import { compileProject, jsonFile } from "../project/project";
 import { AppPackages, sealArtifactDirectory, writableTree } from "../project/packages";
 import { appIcon, appsDirectory, bundledKit, preparedRelease, readRelease, releaseFile, releaseProject, repositoryFile, repositoryProject, type AppRelease } from "./repository";
-import { desktopRuntimeFile, macProjectLaunchFile, macUpdateConfigFile, requireCompatibleDesktopRuntime, writeDesktopRuntime, type DesktopRuntime } from "./desktop-runtimes";
+import { desktopRuntimeFile, macProjectLaunchFile, desktopUpdateConfigFile, requireCompatibleDesktopRuntime, writeDesktopRuntime, type DesktopRuntime } from "./desktop-runtimes";
 import { checkStarterRuntime } from "./runtime-compatibility";
 
 const run = promisify(execFile);
@@ -57,7 +57,7 @@ export async function signBundle(bundle: string, deep = false) {
 // Changing a bundle's identity invalidates its publisher signature. Project bundles
 // are signed locally as a whole so their helpers can load the local frameworks.
 async function signLocalMacBundle(bundle: string, deep: boolean) {
-  const config = join(bundle, "Contents", "Resources", macUpdateConfigFile);
+  const config = join(bundle, "Contents", "Resources", desktopUpdateConfigFile);
   if (!(await info(config))?.isFile()) return signBundle(bundle, deep);
   await Promise.all([rm(config), rm(join(dirname(config), "app", "node_modules", "electron-updater"), {
     recursive: true, force: true,
@@ -145,7 +145,7 @@ async function keepEnglishLocalizations(directory: string) {
 }
 
 export async function writeDesktopResources(engine: string, resources: string, name: string, kit: string,
-  toolchain?: string, desktopName?: string) {
+  toolchain?: string) {
   const metadata = JSON.parse(await readFile(join(engine, "package.json"), "utf8"));
   const app = join(resources, "app");
   await mkdir(app);
@@ -154,7 +154,7 @@ export async function writeDesktopResources(engine: string, resources: string, n
     productName: name,
     version: metadata.version,
     main: "dist/electron/main.js",
-    ...(process.platform === "linux" ? { desktopName: desktopName ?? metadata.desktopName } : {}),
+    ...(process.platform === "linux" ? { desktopName: metadata.desktopName } : {}),
   }));
   const dist = join(engine, "dist");
   await cp(dist, join(app, "dist"), { recursive: true, filter: path => ![join(dist, "npm"), join(dist, "archives"), join(dist, "toolchain")].includes(path) });
@@ -202,11 +202,19 @@ async function identifyMacBundle(contents: string, version: string, spec?: AppRe
 export async function configureMacDesktopUpdates(engine: string, bundle: string, version: string, buildNumber: string) {
   const contents = join(bundle, "Contents");
   const resources = join(contents, "Resources");
-  await copyDependencies(engine, join(resources, "app"), ["electron-updater"]);
+  await bundleDesktopUpdater(engine, resources);
   await setBundleIdentity(join(contents, "Info.plist"), { CFBundleIdentifier: "local.morka",
     CFBundleShortVersionString: version.split("-")[0], CFBundleVersion: buildNumber });
-  await writeFile(join(resources, macUpdateConfigFile), jsonFile({
-    provider: "github", owner: "mithrisys", repo: "morka", private: false, updaterCacheDirName: "morka-updater",
+  await writeDesktopUpdateConfig(resources);
+}
+
+export async function bundleDesktopUpdater(engine: string, resources: string) {
+  await copyDependencies(engine, join(resources, "app"), ["electron-updater"]);
+}
+
+export async function writeDesktopUpdateConfig(resources: string, options: { format?: string; publisherName?: string } = {}) {
+  await writeFile(join(resources, desktopUpdateConfigFile), jsonFile({
+    provider: "github", owner: "mithrisys", repo: "morka", private: false, updaterCacheDirName: "morka-updater", ...options,
   }));
 }
 

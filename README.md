@@ -33,7 +33,13 @@ Use your existing Codex or Claude Code subscription to build your app for macOS,
 
 Linux also has a portable tarball. On Ubuntu 24.04 and newer, use the `.deb` to install the AppArmor profile for Electron. Each release includes checksums and platform signing notes. [GitHub Releases](https://github.com/mithrisys/morka/releases)
 
-The signed macOS launcher checks GitHub Releases and shows when an update is available. Select **Download update** to start the download. When it finishes, close your project windows and select **Restart to update**. Install the first signed DMG manually when moving from an earlier ad-hoc release.
+The Morka launcher checks GitHub Releases and shows when an update is available. Select **Download update** to start the download. When it finishes, close your project windows and follow the launcher’s next action.
+
+- On signed macOS and Windows installations, select **Restart to update**.
+- With a Linux DEB or RPM installation, select **Open installer** and complete the update in your system package installer. The launcher shows the downloaded file if your system has no installer associated with that format.
+- With the Linux tarball, select **Show download** and extract the new archive to update your portable installation.
+
+Install the first updater-enabled release manually when upgrading from an older build. Linux system packages and Windows installers in that release use a stable installation name. You can remove the old versioned launcher after opening the new Morka and checking your projects.
 
 ## How your app grows
 

@@ -49,7 +49,7 @@ gh() {
       test -f draft-state || return 1
       if [[ "$*" == *"--jq .isDraft"* ]]; then cat draft-state; else jq -n --argjson draft "$(cat draft-state)" '{isDraft: $draft}'; fi ;;
     create) test ! -f draft-state && [[ "$*" == *"--verify-tag --draft"* ]] && echo true > draft-state ;;
-    upload) test "$(cat draft-state)" = true && test "$#" -eq 14 ;;
+    upload) test "$(cat draft-state)" = true && test "$#" -eq 16 ;;
     edit) if [[ "$*" == *"--draft=false"* ]]; then echo false > draft-state; fi ;;
     *) return 1 ;;
   esac

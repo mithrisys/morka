@@ -75,6 +75,9 @@ jobs:
       MORKA_MAC_NOTARY_KEY: ${{ secrets.MORKA_MAC_NOTARY_KEY }}
       MORKA_MAC_NOTARY_KEY_ID: ${{ secrets.MORKA_MAC_NOTARY_KEY_ID }}
       MORKA_MAC_NOTARY_ISSUER: ${{ secrets.MORKA_MAC_NOTARY_ISSUER }}
+      MORKA_WINDOWS_CERTIFICATE: ${{ secrets.MORKA_WINDOWS_CERTIFICATE }}
+      MORKA_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.MORKA_WINDOWS_CERTIFICATE_PASSWORD }}
+      MORKA_WINDOWS_PUBLISHER: ${{ secrets.MORKA_WINDOWS_PUBLISHER }}
 
   draft:
     needs: [prepare, desktop]
@@ -124,6 +127,8 @@ jobs:
           enableCrossOsArchive: true
           fail-on-cache-miss: true
       - name: Verify release notes and downloads
+        env:
+          MORKA_WINDOWS_UPDATES: ${{ secrets.MORKA_WINDOWS_PUBLISHER != '' && secrets.MORKA_WINDOWS_CERTIFICATE != '' && secrets.MORKA_WINDOWS_CERTIFICATE_PASSWORD != '' }}
         run: |
           mv release/downloads downloads
           mkdir metadata

@@ -1,10 +1,40 @@
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const { test } = require("node:test");
-const { MacUpdates, runningProject, updateError } = require("../dist/electron/macos-updates.js");
-const { mkdtemp, mkdir, rm, symlink } = require("node:fs/promises");
+const { DesktopUpdates, runningProject, updateError } = require("../dist/electron/desktop-updates.js");
+const { mkdtemp, mkdir, rm, symlink, writeFile } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
+const sha512 = Buffer.alloc(64).toString("base64");
+
+test("Windows selects the matching NSIS installer and Linux opens only the installed package format", async () => {
+  const version = "1.2.0";
+  for (const [arch, format, url, other] of [
+    ["arm64", "nsis", "morka-1.2.0-Windows-arm64-Setup.exe", "morka-1.2.0-Windows-x64-Setup.exe"],
+    ["x64", "rpm", "morka-1.2.0-Linux-x64.rpm", "morka-1.2.0-Linux-x64.deb"],
+    ["arm64", "tar", "morka-1.2.0-Linux-arm64.tar.gz", "morka-1.2.0-Linux-arm64.rpm"],
+  ]) {
+    const client = new EventEmitter();
+    const update = { version, supportedRuntimeApis: [1], files: [other, url].map(url => ({ url, sha512, size: 1 })) };
+    const actions = [];
+    const updater = new DesktopUpdates(client, "1.0.0", [1], () => {}, { arch, format,
+      ...(format !== "nsis" ? { open: async file => { actions.push(file); } } : {}) });
+    client.checkForUpdates = async () => ({ isUpdateAvailable: true, updateInfo: update });
+    client.downloadUpdate = async () => {
+      assert.deepEqual(update.files.map(file => file.url), [url]);
+      actions.push("download");
+      return [url];
+    };
+    client.quitAndInstall = () => { actions.push("restart"); };
+    await updater.check();
+    assert.equal(updater.state.status, "available");
+    assert.deepEqual(actions, []);
+    await updater.download();
+    assert.equal(updater.state.status, "ready");
+    await updater.install(async () => {});
+    assert.deepEqual(actions, ["download", format === "nsis" ? "restart" : url]);
+  }
+});
 
 test("only newer releases on the installed channel that preserve project APIs can download", () => {
   const compatible = { version: "1.1.0", supportedRuntimeApis: [1, 2] };
@@ -21,12 +51,12 @@ test("an update waits for download approval and a safe, explicit restart", async
   let checks = 0;
   let installs = 0;
   let downloads = 0;
-  const candidate = { version: "1.1.0", supportedRuntimeApis: [1], files: [{ url: "morka-1.1.0-macOS-arm64.zip" }] };
+  const candidate = { version: "1.1.0", supportedRuntimeApis: [1], files: [{ url: "morka-1.1.0-macOS-arm64.zip", sha512, size: 1 }] };
   client.checkForUpdates = async () => { checks++; return { isUpdateAvailable: true, updateInfo: candidate }; };
   client.downloadUpdate = async () => { downloads++; };
   client.quitAndInstall = () => { installs++; };
   const states = [];
-  const updater = new MacUpdates(client, "1.0.0", [1], state => states.push(state.status));
+  const updater = new DesktopUpdates(client, "1.0.0", [1], state => states.push(state.status), { arch: "arm64", format: "zip" });
 
   await Promise.all([updater.check(), updater.check()]);
   assert.equal(checks, 1);
@@ -41,10 +71,10 @@ test("an update waits for download approval and a safe, explicit restart", async
   assert.equal(client.autoInstallOnAppQuit, false);
   assert.equal(updater.state.status, "ready");
   assert.equal(installs, 0);
-  await updater.restart(async () => { throw new Error("Close your open projects to install the update."); });
+  await updater.install(async () => { throw new Error("Close your open projects to install the update."); });
   assert.equal(updater.state.status, "ready");
   assert.match(updater.state.detail, /Close your open projects/);
-  await updater.restart(async () => {});
+  await updater.install(async () => {});
   assert.equal(installs, 1);
   assert.deepEqual(states, ["checking", "available", "downloading", "ready", "installing", "ready", "installing"]);
   client.emit("error", new Error("macOS rejected the signature"));
@@ -63,20 +93,22 @@ test("the updater rejects a mismatched archive before downloading it", async () 
   client.checkForUpdates = async () => ({ isUpdateAvailable: true, updateInfo: { version: "1.1.0",
     supportedRuntimeApis: [1], files: [{ url: "morka-1.1.0-macOS-x64.zip" }] } });
   client.downloadUpdate = () => assert.fail("The archive must be rejected before downloading");
-  const updater = new MacUpdates(client, "1.0.0", [1], () => {});
+  const updater = new DesktopUpdates(client, "1.0.0", [1], () => {}, { arch: "arm64", format: "zip" });
   await updater.check();
   assert.equal(updater.state.status, "error");
-  assert.match(updater.state.detail, /Apple Silicon/);
+  assert.match(updater.state.detail, /macOS-arm64\.zip/);
 });
 
-test("installed projects block restart until their process locks are released", { skip: process.platform !== "darwin" }, async t => {
+test("installed projects block restart until their process locks are released", async t => {
   const library = await mkdtemp(join(tmpdir(), "morka-update-projects-"));
   t.after(() => rm(library, { recursive: true, force: true }));
   const profile = join(library, "instances", "project");
   await mkdir(profile, { recursive: true });
-  const lock = join(profile, "SingletonLock");
+  const { windowsProjectPidFile } = require("../dist/instances/desktop-runtimes.js");
+  const lock = join(profile, process.platform === "win32" ? windowsProjectPidFile : "SingletonLock");
   assert.equal(await runningProject(library), false);
-  await symlink(`test-host-${process.pid}`, lock);
+  if (process.platform === "win32") await writeFile(lock, String(process.pid));
+  else await symlink(`test-host-${process.pid}`, lock);
   assert.equal(await runningProject(library), true);
   await rm(lock);
   assert.equal(await runningProject(library), false);

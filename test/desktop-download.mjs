@@ -10,20 +10,27 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-const [executable, resources] = process.argv.slice(2).map(value => resolve(value));
+const [executable, resources] = process.argv.slice(2, 4).map(value => resolve(value));
+const format = process.argv[4];
 const local = createRequire(join(resources, "app/package.json"));
 const { materializeRepository, repositoryProfileId, bundledKit, appsDirectory } = local("./dist/instances/repository.js");
 const { snapshot, entryFile } = local("./dist/project/files.js");
 const { starterManifest, jsonFile } = local("./dist/project/project.js");
 const { bundledToolchain } = local("./dist/project/toolchain.js");
 const { writableTree } = local("./dist/project/packages.js");
-const { readDesktopRuntime } = local("./dist/instances/desktop-runtimes.js");
+const { desktopUpdateConfigFile, isProjectRunning, readDesktopRuntime } = local("./dist/instances/desktop-runtimes.js");
 const work = await realpath(await mkdtemp(join(tmpdir(), "morka-download-")));
 let child, profile, projectBundle;
 try {
   const desktop = await readDesktopRuntime(resources);
   assert.ok(desktop, "The download must register as a desktop runtime");
   assert.equal(await realpath(executable), await realpath(desktop.executable));
+  if (format) {
+    const config = JSON.parse(await readFile(join(resources, desktopUpdateConfigFile), "utf8"));
+    assert.equal(config.format, format);
+    assert.equal(config.provider, "github");
+    assert.equal(typeof local("electron-updater").AppUpdater, "function");
+  }
   const spec = { version: 1, id: randomUUID(), name: "Release Smoke", iconColor: 0, runtimeVersion: desktop.version };
   if (process.platform !== "darwin") {
     const locales = await readdir(join(resources, "../locales"));
@@ -94,6 +101,9 @@ try {
       if (health?.ok && await health.text() === "ready") {
         const page = await fetch(`http://127.0.0.1:${port}/`);
         assert.ok(page.ok && (await page.text()).includes("<html"));
+        if (process.platform !== "darwin") {
+          assert.equal(await isProjectRunning(appsDirectory(appData), repositoryProfileId(spec, repo)), true);
+        }
         console.log("PASS: the installed desktop rendered the project window and served a fresh starter using the bundled Node and npm.");
         break;
       }

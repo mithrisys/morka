@@ -19,7 +19,7 @@ const { bundledToolchain } = local("./dist/project/toolchain.js");
 const { writableTree } = local("./dist/project/packages.js");
 const { readDesktopRuntime } = local("./dist/instances/desktop-runtimes.js");
 const work = await realpath(await mkdtemp(join(tmpdir(), "morka-download-")));
-let child, profile;
+let child, profile, projectBundle;
 try {
   const desktop = await readDesktopRuntime(resources);
   assert.ok(desktop, "The download must register as a desktop runtime");
@@ -67,7 +67,14 @@ try {
   const debugPort = probe.address().port;
   await new Promise(done => probe.close(done));
   const args = ["--remote-debugging-address=127.0.0.1", `--remote-debugging-port=${debugPort}`, `--morka-project=${repo}`];
-  child = spawn(executable, args, {
+  let projectExecutable = executable;
+  if (process.platform === "darwin") {
+    // Attach to the signed project process. The shared launcher exits after handing off to it.
+    const { prepareMacProjectExecutable } = local("./dist/instances/distribution.js");
+    projectExecutable = await prepareMacProjectExecutable(desktop, appData, repo, spec);
+    projectBundle = resolve(projectExecutable, "../../..");
+  }
+  child = spawn(projectExecutable, args, {
     cwd: work, env, stdio: "inherit",
   });
   let error;
@@ -101,7 +108,7 @@ try {
     else child.kill("SIGTERM");
     await closed;
   }
-  for (const dir of [profile, work]) {
+  for (const dir of [profile, projectBundle, work]) {
     if (dir && existsSync(dir)) {
       await writableTree(dir);
       await rm(dir, { recursive: true, force: true, maxRetries: 4, retryDelay: 500 });

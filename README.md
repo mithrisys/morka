@@ -27,7 +27,7 @@ Use your existing Codex or Claude Code subscription to build your app for macOS,
 
 | Platform | Architecture | What to install |
 | --- | --- | --- |
-| macOS | Apple Silicon | Open the DMG and drag Morka into Applications. |
+| macOS | Apple Silicon | Open the DMG, drag Morka into Applications, then open it from there. This build uses an ad-hoc signature and lacks Apple notarization. If macOS says it cannot verify Morka, dismiss the alert and go to **System Settings → Privacy & Security**. Click **Open Anyway** for Morka, then **Open** to confirm. [Apple’s guide](https://support.apple.com/en-us/102445) |
 | Windows | x64 or ARM64 | Run the setup executable for your architecture. |
 | Linux | x64 or ARM64 | On Debian or Ubuntu, run `sudo apt install ./morka-*.deb` from your download folder. On Fedora, use `sudo dnf install ./morka-*.rpm`. |
 

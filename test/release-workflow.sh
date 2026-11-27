@@ -7,6 +7,12 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 export RUNNER_TEMP="$work" npm_config_cache="$work/cache" GIT_ALLOW_PROTOCOL=file
 export RELEASE_TAG="v$(node -p "require('./package.json').version")"
+expected_channel=latest
+expected_prerelease=false
+if [[ "$RELEASE_TAG" == *-* ]]; then
+  expected_channel=next
+  expected_prerelease=true
+fi
 ruby -ryaml -e 'puts YAML.load_file(ARGV[0]).fetch("jobs").fetch("publish").fetch("steps").last.fetch("run")' \
   .github/workflows/release.yml > "$work/publish.sh"
 cd "$work"
@@ -17,7 +23,8 @@ ln -s "$root/dist/archives" release/canonical-kit
 curl() { printf '404'; }
 npm() {
   case "$1" in
-    publish) command npm "$@" --dry-run --offline --ignore-scripts --json > "$component.json" ;;
+    publish) test "$3" = --tag && test "$4" = "$expected_channel" &&
+      command npm "$@" --dry-run --offline --ignore-scripts --json > "$component.json" ;;
     view) jq -er --arg name "$name" '(.[$name] // .).integrity' "$component.json" ;;
     *) return 1 ;;
   esac
@@ -48,7 +55,8 @@ gh() {
     view)
       test -f draft-state || return 1
       if [[ "$*" == *"--jq .isDraft"* ]]; then cat draft-state; else jq -n --argjson draft "$(cat draft-state)" '{isDraft: $draft}'; fi ;;
-    create) test ! -f draft-state && [[ "$*" == *"--verify-tag --draft"* ]] && echo true > draft-state ;;
+    create) test ! -f draft-state && [[ "$*" == *"--verify-tag --draft --prerelease=$expected_prerelease "* ]] &&
+      echo true > draft-state ;;
     upload) test "$(cat draft-state)" = true && test "$#" -eq 16 ;;
     edit) if [[ "$*" == *"--draft=false"* ]]; then echo false > draft-state; fi ;;
     *) return 1 ;;

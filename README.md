@@ -3,7 +3,7 @@
 </p>
 <h1 align="center">Morka</h1>
 <p align="center"><strong>Build your own AI-powered desktop app with Morka and your existing coding agent subscription.</strong><br>
-Your existing AI subscription powers your coding agent and the AI inside your app. Watch your edits go live without losing your place.</p>
+Edit your app as you use it and see changes live without losing state.</p>
 <p align="center">
   <a href="https://github.com/mithrisys/morka/releases"><strong>Download Morka</strong></a>
   · <a href="#quickstart">Build your first app</a>

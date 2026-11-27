@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { copyFile, cp, mkdir, mkdtemp, readFile, readlink, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { app, shell } from "electron";
@@ -11,7 +11,7 @@ import { bundledToolchain } from "../project/toolchain";
 import { setBundleIdentity, signBundle } from "./distribution";
 import { projectIcon } from "./macos";
 import { appIcon, appsDirectory, portableAppName, repositoryFile, repositoryProfileId, type AppRelease } from "./repository";
-import { activeRuntimeFile, desktopProjectArgument, newestDesktopRuntime, readDesktopRuntime, readMacProjectLaunch, registerDesktopRuntime,
+import { activeRuntimeFile, desktopProjectArgument, isProjectRunning, newestDesktopRuntime, readDesktopRuntime, readMacProjectLaunch, registerDesktopRuntime,
   updateActiveDesktopRuntime, type DesktopRuntime } from "./desktop-runtimes";
 
 type ProjectLaunchConfig = { repository: string; profile: string };
@@ -56,16 +56,7 @@ async function writeBootstrap(directory: string, name: string, config: LaunchCon
 }
 
 async function requireClosed(library: string, profile: string) {
-  const lock = await readlink(join(library, "instances", profile, "SingletonLock")).catch(() => "");
-  const pid = Number(/-(\d+)$/.exec(lock)?.[1]);
-  if (!pid) return;
-  try {
-    process.kill(pid, 0);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
-    throw error;
-  }
-  throw new Error("Close the project before updating its installed app.");
+  if (await isProjectRunning(library, profile)) throw new Error("Close the project before updating its installed app.");
 }
 
 function macApplication(name: string) {

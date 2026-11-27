@@ -19,6 +19,17 @@ on:
         description: Verified release commit
         required: true
         type: string
+    secrets:
+      MORKA_MAC_CERTIFICATE:
+        required: false
+      MORKA_MAC_CERTIFICATE_PASSWORD:
+        required: false
+      MORKA_MAC_NOTARY_KEY:
+        required: false
+      MORKA_MAC_NOTARY_KEY_ID:
+        required: false
+      MORKA_MAC_NOTARY_ISSUER:
+        required: false
 
 permissions:
   contents: read
@@ -65,9 +76,16 @@ jobs:
           key: morka-release-${{ github.run_id }}-${{ github.run_attempt }}-npm
           enableCrossOsArchive: true
           fail-on-cache-miss: true
-      - run: npm run package:desktop
+      - run: npm run build
+      - run: node scripts/releases/package-desktop.mjs
         env:
           MORKA_RELEASE_PROJECT_LOCK: ${{ inputs.commit && 'release/canonical-kit/project-lock.json' || '' }}
+          MORKA_MAC_BUILD_NUMBER: ${{ github.run_number }}
+          MORKA_MAC_CERTIFICATE: ${{ runner.os == 'macOS' && inputs.commit && secrets.MORKA_MAC_CERTIFICATE || '' }}
+          MORKA_MAC_CERTIFICATE_PASSWORD: ${{ runner.os == 'macOS' && inputs.commit && secrets.MORKA_MAC_CERTIFICATE_PASSWORD || '' }}
+          MORKA_MAC_NOTARY_KEY: ${{ runner.os == 'macOS' && inputs.commit && secrets.MORKA_MAC_NOTARY_KEY || '' }}
+          MORKA_MAC_NOTARY_KEY_ID: ${{ runner.os == 'macOS' && inputs.commit && secrets.MORKA_MAC_NOTARY_KEY_ID || '' }}
+          MORKA_MAC_NOTARY_ISSUER: ${{ runner.os == 'macOS' && inputs.commit && secrets.MORKA_MAC_NOTARY_ISSUER || '' }}
       - name: Mount and test the disk image
         if: runner.os == 'macOS'
         run: bash scripts/releases/test-dmg.sh release/downloads/*.dmg

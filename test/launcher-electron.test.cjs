@@ -34,6 +34,19 @@ async function testLauncher() {
   };
   const desktop = require("../dist/instances/desktop.js");
   const handoffs = new EventEmitter();
+  const updateClient = new EventEmitter();
+  let updateInstalls = 0;
+  let projectRunning = true;
+  const macUpdates = require("../dist/electron/macos-updates.js");
+  macUpdates.runningProject = async () => projectRunning;
+  updateClient.checkForUpdates = async () => ({ isUpdateAvailable: true,
+    updateInfo: { version: "1.1.0", supportedRuntimeApis: [1], files: [{ url: "morka-1.1.0-macOS-arm64.zip" }] } });
+  updateClient.downloadUpdate = async () => {};
+  updateClient.quitAndInstall = () => {
+    updateInstalls++;
+    updateClient.emit("error", new Error("Test installation stopped."));
+  };
+  macUpdates.updatesForLauncher = async (_runtime, notify) => new macUpdates.MacUpdates(updateClient, "1.0.0", [1], notify);
   const installed = new Set();
   const launches = [];
   let failInstall = true;
@@ -62,6 +75,22 @@ async function testLauncher() {
   const contents = window.webContents;
   await once(contents, "did-finish-load");
   const evaluate = script => contents.executeJavaScript(script);
+  const waitForUpdate = text => evaluate(`(async () => {
+    const deadline = Date.now() + 5000;
+    while (!document.querySelector('#launcher-update-status').textContent.includes(${JSON.stringify(text)})) {
+      if (Date.now() >= deadline) throw Error('Expected update status to include ' + ${JSON.stringify(text)});
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+  })()`);
+  await waitForUpdate("1.1.0 is ready");
+  assert.equal(await evaluate("document.querySelector('#launcher-update-action').textContent"), "Restart to update");
+  await evaluate("document.querySelector('#launcher-update-action').click()");
+  await waitForUpdate("Close your open projects");
+  assert.equal(updateInstalls, 0);
+  projectRunning = false;
+  await evaluate("document.querySelector('#launcher-update-action').click()");
+  await waitForUpdate("Test installation stopped");
+  assert.equal(updateInstalls, 1);
   await evaluate("document.querySelector('#new-app').click()");
   assert.equal(await evaluate("Boolean(document.querySelector('dialog[open] #app-name'))"), true,
     "Activating the launcher must open the project naming dialog");

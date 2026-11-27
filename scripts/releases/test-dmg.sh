@@ -9,7 +9,7 @@ trap 'if [ "$mounted" -eq 1 ]; then hdiutil detach -quiet "$mount"; fi; rm -rf "
 hdiutil attach -quiet -readonly -nobrowse -mountpoint "$mount" "$image"
 mounted=1
 test "$(readlink "$mount/Applications")" = /Applications
-set -- "$mount"/Morka-*.app
+set -- "$mount"/Morka*.app
 test "$#" -eq 1 && test -d "$1"
 bundle="$work/${1##*/}"
 ditto "$1" "$bundle"

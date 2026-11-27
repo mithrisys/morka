@@ -78,7 +78,17 @@ For tagged builds, the prepare job resolves the starter lockfile against the exa
 
 After all native tests pass, the workflow stages the downloads and `SHA256SUMS.txt` in a draft GitHub Release. It publishes and verifies the runtime followed by the packager using npm Trusted Publishing, then makes the GitHub Release public. A prerelease version such as `0.3.0-beta.1` is marked as a GitHub prerelease and uses the npm `next` tag. Stable versions use `latest`. Pull requests build and test the downloads with read-only permissions. Release runs assemble the release metadata and upload the downloads to GitHub Releases.
 
-The macOS build currently uses an ad-hoc signature. The Windows installer has no publisher signature. Record these limitations in release notes for preview builds. Plan Developer ID signing and notarization on macOS and Authenticode signing on Windows before broad distribution.
+Release builds can sign and notarize macOS using these GitHub Actions secrets. Local builds and releases without these credentials use ad-hoc signing. The Windows installer has no publisher signature. Record signing limitations in the release notes.
+
+| Secret | Value |
+| --- | --- |
+| `MORKA_MAC_CERTIFICATE` | Base64-encoded PKCS#12 containing a Developer ID Application certificate and its private key |
+| `MORKA_MAC_CERTIFICATE_PASSWORD` | PKCS#12 export password |
+| `MORKA_MAC_NOTARY_KEY` | App Store Connect API private key file contents |
+| `MORKA_MAC_NOTARY_KEY_ID` | API key ID |
+| `MORKA_MAC_NOTARY_ISSUER` | API issuer ID |
+
+When configured, macOS release jobs use the release workflow run number as the bundle build number. For a local signed `npm run package:desktop`, supply `MORKA_MAC_BUILD_NUMBER` as an increasing integer along with the signing variables. The signed DMG installs `Morka.app` and the public release also includes the signed app ZIP and updater metadata. Existing ad-hoc installations can move to automatic updates by installing the first signed DMG. Verify an update between two signed releases using an existing project launcher and its private profile. The normal PR build exercises update behavior with synthetic releases and keeps release credentials out of that build.
 
 Each desktop download bundles a runnable Morka runtime and advertises the app contracts it supports in `host/instances/runtime-compatibility.ts`. A compatible release keeps its existing API support. When a release drops an app contract, add the required steps and guidance to `host/instances/runtime-upgrades.ts` and exercise an older checkout through the upgrade, including failure recovery. Keep the starter's minimum version and API supported by the embedded runtime.
 

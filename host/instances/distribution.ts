@@ -11,7 +11,7 @@ import { bundleToolchain } from "../project/bundle-toolchain";
 import { compileProject, jsonFile } from "../project/project";
 import { AppPackages, sealArtifactDirectory, writableTree } from "../project/packages";
 import { appIcon, appsDirectory, bundledKit, preparedRelease, readRelease, releaseFile, releaseProject, repositoryFile, repositoryProject, type AppRelease } from "./repository";
-import { desktopRuntimeFile, macProjectLaunchFile, requireCompatibleDesktopRuntime, writeDesktopRuntime, type DesktopRuntime } from "./desktop-runtimes";
+import { desktopRuntimeFile, macProjectLaunchFile, macUpdateConfigFile, requireCompatibleDesktopRuntime, writeDesktopRuntime, type DesktopRuntime } from "./desktop-runtimes";
 import { checkStarterRuntime } from "./runtime-compatibility";
 
 const run = promisify(execFile);
@@ -51,6 +51,19 @@ export async function signBundle(bundle: string, deep = false) {
   await run("/usr/bin/codesign", [
     "--force", ...(deep ? ["--deep"] : []), "--sign", "-", "--preserve-metadata=entitlements,flags", bundle,
   ]);
+  await run("/usr/bin/codesign", ["--verify", "--deep", "--strict", bundle]);
+}
+
+// Changing a bundle's identity invalidates its publisher signature. Project bundles
+// are signed locally as a whole so their helpers can load the local frameworks.
+async function signLocalMacBundle(bundle: string, deep: boolean) {
+  const config = join(bundle, "Contents", "Resources", macUpdateConfigFile);
+  if (!(await info(config))?.isFile()) return signBundle(bundle, deep);
+  await Promise.all([rm(config), rm(join(dirname(config), "app", "node_modules", "electron-updater"), {
+    recursive: true, force: true,
+  })]);
+  await run("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", "--options", "0",
+    "--preserve-metadata=entitlements", bundle]);
   await run("/usr/bin/codesign", ["--verify", "--deep", "--strict", bundle]);
 }
 
@@ -96,7 +109,7 @@ export async function prepareMacProjectExecutable(
       CFBundleIdentifier: `local.morka.project.${project}`,
       LSUIElement: true,
     });
-    await signBundle(bundle, !signature);
+    await signLocalMacBundle(bundle, !signature);
     try {
       await rename(bundle, destination);
     } catch (error) {
@@ -186,6 +199,17 @@ async function identifyMacBundle(contents: string, version: string, spec?: AppRe
   });
 }
 
+export async function configureMacDesktopUpdates(engine: string, bundle: string, version: string, buildNumber: string) {
+  const contents = join(bundle, "Contents");
+  const resources = join(contents, "Resources");
+  await copyDependencies(engine, join(resources, "app"), ["electron-updater"]);
+  await setBundleIdentity(join(contents, "Info.plist"), { CFBundleIdentifier: "local.morka",
+    CFBundleShortVersionString: version.split("-")[0], CFBundleVersion: buildNumber });
+  await writeFile(join(resources, macUpdateConfigFile), jsonFile({
+    provider: "github", owner: "mithrisys", repo: "morka", private: false, updaterCacheDirName: "morka-updater",
+  }));
+}
+
 export async function buildMacBundle(
   engine: string, bundle: string, kit: string, release?: MacRelease,
   releaseVersion?: string,
@@ -258,7 +282,7 @@ export async function exportDesktopMacRelease(runtime: DesktopRuntime, repositor
     await rm(join(app, "dist", "instances", "MorkaProject"));
     await prepareMacRelease(resources, { spec, repository, packagesHome: join(stage, "packages") }, join(app, "dist", "toolchain"));
     await identifyMacBundle(contents, version, spec);
-    await signBundle(bundle, true);
+    await signLocalMacBundle(bundle, true);
   });
 }
 

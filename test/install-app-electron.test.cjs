@@ -1,6 +1,8 @@
 const assert = require("node:assert/strict");
 const { execFile, execFileSync } = require("node:child_process");
+const { once } = require("node:events");
 const { lstat, mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } = require("node:fs/promises");
+const { createServer } = require("node:http");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 const { setTimeout: delay } = require("node:timers/promises");
@@ -34,8 +36,50 @@ async function waitFor(check) {
   }
 }
 
+async function testUpdateDownload(workspace) {
+  const { MacUpdater } = require("electron-updater");
+  const { MacUpdates } = require("../dist/electron/macos-updates.js");
+  const { macUpdateAssets, writeMacUpdateMetadata } = await import("../scripts/releases/metadata.mjs");
+  const version = "999.0.0";
+  const { feed, zip } = macUpdateAssets(version);
+  await writeFile(join(workspace, zip), "fixture update archive");
+  await writeMacUpdateMetadata(workspace, version, [1]);
+  const metadata = await readFile(join(workspace, feed));
+  const archive = await readFile(join(workspace, zip));
+  let corrupt = true;
+  const server = createServer((request, response) => {
+    const path = new URL(request.url, "http://127.0.0.1").pathname;
+    if (path === `/${feed}`) { response.end(metadata); return; }
+    if (path === `/${zip}`) { response.end(corrupt ? "corrupt update archive" : archive); return; }
+    response.writeHead(404).end();
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const client = new MacUpdater();
+  try {
+    client.logger = null;
+    client.forceDevUpdateConfig = true;
+    Object.defineProperty(client.app, "baseCachePath", { value: workspace });
+    const configuration = join(workspace, "update-provider.yml");
+    await writeFile(configuration, JSON.stringify({ provider: "generic", url: `http://127.0.0.1:${server.address().port}`,
+      updaterCacheDirName: "updater-fixture" }));
+    client.updateConfigPath = configuration;
+    const updates = new MacUpdates(client, "1.0.0", [1], () => {});
+    await updates.check();
+    assert.equal(updates.state.status, "error");
+    assert.match(updates.state.detail, /sha512|checksum/i);
+    corrupt = false;
+    await updates.check();
+    assert.deepEqual(updates.state, { status: "ready", version });
+    console.log("PASS: the native update adapter rejects a corrupt archive and stages valid release metadata and bytes.");
+  } finally {
+    client.closeServerIfExists();
+    await new Promise(resolve => server.close(resolve));
+  }
+}
+
 async function testSharedInstall(root, support, source) {
-  const { setBundleIdentity, signBundle } = require("../dist/instances/distribution.js");
+  const { configureMacDesktopUpdates, setBundleIdentity, signBundle } = require("../dist/instances/distribution.js");
   const { writeDesktopRuntime } = require("../dist/instances/desktop-runtimes.js");
   const { materializeRepository, readRelease, repositoryFile, repositoryProfileId } = require("../dist/instances/repository.js");
   const { makeIcon } = require("../dist/instances/macos.js");
@@ -55,6 +99,10 @@ async function testSharedInstall(root, support, source) {
       });
     `, root, host, kit], { cwd: root, timeout: 60_000 });
     const metadata = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8"));
+    await configureMacDesktopUpdates(root, host, metadata.version, "1");
+    const { createRequire } = require("node:module");
+    const bundledRequire = createRequire(join(appRoot, "package.json"));
+    assert.equal(typeof bundledRequire("electron-updater").MacUpdater, "function");
     await writeFile(join(appRoot, "package.json"), JSON.stringify({ ...metadata, main: "install-test.cjs" }));
     await writeFile(join(appRoot, "install-test.cjs"), `
       const { app, BrowserWindow, dialog, Menu } = require("electron");
@@ -203,6 +251,8 @@ async function testSharedInstall(root, support, source) {
       const launcherPolicy = await run("/usr/bin/plutil", ["-extract", "LSUIElement", "raw", plist]);
       assert.equal(launcherPolicy.stdout.trim(), "true");
       const runningResources = resolve(started.executable, "../../Resources");
+      await assert.rejects(lstat(join(runningResources, "app-update.yml")), { code: "ENOENT" });
+      await assert.rejects(lstat(join(runningResources, "app/node_modules/electron-updater")), { code: "ENOENT" });
       assert.deepEqual(JSON.parse(await readFile(join(runningResources, "morka-project-launch.json"), "utf8")), {
         repository, runtimeResources: join(host, "Contents/Resources"),
       });
@@ -291,6 +341,7 @@ let temporary;
   app.setPath("userData", profile);
   app.setActivationPolicy("prohibited");
   await app.whenReady();
+  await testUpdateDownload(temporary);
 
   const { installDesktopApp, openInstalledProject } = require("../dist/instances/desktop.js");
   const { makeIcon } = require("../dist/instances/macos.js");

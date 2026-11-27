@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export function releaseNotes(changelog, version) {
@@ -28,9 +28,28 @@ export function desktopAssets(version) {
   };
 }
 
+export function macUpdateAssets(version) {
+  const channel = version.match(/^[^-]+-([^.]+)/)?.[1] ?? "latest";
+  return { zip: `morka-${version}-macOS-arm64.zip`, feed: `${channel}-mac.yml` };
+}
+
+export async function writeMacUpdateMetadata(directory, version, supportedRuntimeApis) {
+  const { zip, feed } = macUpdateAssets(version);
+  const archive = join(directory, zip);
+  const { size } = await stat(archive);
+  const digest = createHash("sha512");
+  for await (const chunk of createReadStream(archive)) digest.update(chunk);
+  // JSON is a subset of YAML and is accepted by electron-updater's metadata reader.
+  const metadata = { version, supportedRuntimeApis, files: [{ url: zip, size, sha512: digest.digest("base64") }] };
+  await writeFile(join(directory, feed), JSON.stringify(metadata, null, 2) + "\n");
+}
+
 export async function writeChecksums(directory, version) {
-  const expected = Object.values(desktopAssets(version)).flatMap(Object.values).sort();
+  const expected = Object.values(desktopAssets(version)).flatMap(Object.values);
   const entries = (await readdir(directory)).filter(name => name !== "SHA256SUMS.txt").sort();
+  const update = Object.values(macUpdateAssets(version));
+  if (update.some(name => entries.includes(name))) expected.push(...update);
+  expected.sort();
   if (JSON.stringify(entries) !== JSON.stringify(expected)) throw new Error("Expected exactly the downloads for each supported desktop target and package format.");
   const lines = [];
   for (const name of expected) {

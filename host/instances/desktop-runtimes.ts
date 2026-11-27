@@ -1,4 +1,4 @@
-import { readdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { readdir, readFile, readlink, realpath, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join } from "node:path";
 import { writeTextAtomically } from "../app-runtime/text-file";
 import { info } from "../project/files";
@@ -8,8 +8,24 @@ import { compareRuntimeVersions, isRuntimeApi, isRuntimeVersion, legacyRuntimeAp
 export const desktopRuntimeFile = "morka-runtime.json";
 export const desktopProjectArgument = "--morka-project=";
 export const macProjectLaunchFile = "morka-project-launch.json";
+export const macUpdateConfigFile = "app-update.yml";
 
 export type DesktopRuntime = RuntimeContract & { version: string; resources: string; executable: string; appDirectory: string };
+
+export async function isProjectRunning(library: string, profile: string) {
+  const lock = await readlink(join(library, "instances", profile, "SingletonLock")).catch(error => {
+    if (["ENOENT", "ENOTDIR"].includes(error.code)) return "";
+    throw error;
+  });
+  const pid = Number(/-(\d+)$/.exec(lock)?.[1]);
+  if (!pid) return false;
+  try { process.kill(pid, 0); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    if ((error as NodeJS.ErrnoException).code !== "EPERM") throw error;
+  }
+  return true;
+}
 
 export async function writeDesktopRuntime(resources: string, version: string, executable: string) {
   if (!isRuntimeVersion(version)) throw new Error("Invalid desktop runtime version.");

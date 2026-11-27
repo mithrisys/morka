@@ -26,6 +26,7 @@ await cp(join(root, "host/renderer/licenses/marked-footnote.txt"), join(licenses
 await build({
   entryPoints: {
     "renderer/app-setup": join(root, "host/renderer/app-setup.ts"),
+    "renderer/launcher/updates": join(root, "host/renderer/launcher-updates.ts"),
     "renderer/renderer": join(root, "host/renderer/renderer.ts"),
     "app-runtime/bridge": join(root, "host/app-runtime/bridge.ts"),
   },

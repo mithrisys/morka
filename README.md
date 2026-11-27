@@ -33,6 +33,8 @@ Use your existing Codex or Claude Code subscription to build your app for macOS,
 
 Linux also has a portable tarball. On Ubuntu 24.04 and newer, use the `.deb` to install the AppArmor profile for Electron. Each release includes checksums and platform signing notes. [GitHub Releases](https://github.com/mithrisys/morka/releases)
 
+Signed macOS releases check GitHub Releases for updates and download them in the background. Open the Morka launcher and select **Restart to update** after closing your project windows. Install the first signed DMG manually when moving from an earlier ad-hoc release.
+
 ## How your app grows
 
 **Keep your place through edits.** Morka restores the current page, form input, focus, and scroll position after a code update. Apps can also preserve their own state, such as a selected tab or filter. If an edit fails its build or preview check, the last working version stays open and the agent keeps its draft for repair. [Live updates and app state](docs/app-authoring.md#run-and-update-the-app)

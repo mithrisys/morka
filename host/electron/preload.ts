@@ -6,6 +6,10 @@ if (process.isMainFrame) {
     installApp: (name: string): Promise<AppInstallResult | undefined> => ipcRenderer.invoke("instance:install", name),
     wakeProject: (kind: ProjectSourceKind, gitUrl?: string): Promise<{ error: string } | undefined> =>
       ipcRenderer.invoke("instance:wake", kind, gitUrl),
+    macUpdateState: (): Promise<MacUpdateState | undefined> => ipcRenderer.invoke("mac-update:state"),
+    checkMacUpdate: (): Promise<void> => ipcRenderer.invoke("mac-update:check"),
+    restartForMacUpdate: (): Promise<void> => ipcRenderer.invoke("mac-update:restart"),
+    onMacUpdate: (listener: (state: MacUpdateState) => void) => ipcRenderer.on("mac-update:state", (_event, state) => listener(state)),
     getPreview: (): Promise<string | undefined> => ipcRenderer.invoke("canvas:current"),
     onPreview: (listener: (url?: string) => void) => {
       ipcRenderer.on("canvas:update", (_event, url) => listener(url));

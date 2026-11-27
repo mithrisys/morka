@@ -29,12 +29,20 @@ type AddonRequest =
 type AddonResult = { value?: unknown; error?: string };
 type AppInstallResult = { path: string; openError: string } | { error: string };
 type ProjectSourceKind = "folder" | "archive" | "git";
+type MacUpdateState = { status: "idle" | "checking" | "current" }
+  | { status: "downloading"; version: string; percent?: number }
+  | { status: "ready" | "installing"; version: string; detail?: string }
+  | { status: "error"; detail: string };
 
 interface Window {
   lab: {
     currentApp(): Promise<string | undefined>;
     installApp(name: string): Promise<AppInstallResult | undefined>;
     wakeProject(kind: ProjectSourceKind, gitUrl?: string): Promise<{ error: string } | undefined>;
+    macUpdateState(): Promise<MacUpdateState | undefined>;
+    checkMacUpdate(): Promise<void>;
+    restartForMacUpdate(): Promise<void>;
+    onMacUpdate(listener: (state: MacUpdateState) => void): void;
     getPreview(): Promise<string | undefined>;
     onPreview(listener: (url?: string) => void): void;
     onPreviewUpdating(listener: (updating: boolean) => void): void;

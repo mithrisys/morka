@@ -1,4 +1,5 @@
 import { reviewScenario } from "./scenario-review";
+import { runningProject, updatesForLauncher } from "./macos-updates";
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainInvokeEvent } from "electron";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import { mkdirSync, statSync } from "node:fs";
@@ -41,12 +42,13 @@ function kitDirectory() {
 
 function registerInstaller(
   window: BrowserWindow, requireShell: (event: IpcMainInvokeEvent) => void, getFiles: () => Promise<Files>,
-  options: { source?: () => AppInstance; onInstalled?: (path: string, openError: string) => void } = {},
+  options: { source?: () => AppInstance; onInstalled?: (path: string, openError: string) => void; updating?: () => boolean } = {},
 ) {
   let installing = false;
   ipcMain.handle("instance:install", async (event, rawName: unknown): Promise<AppInstallResult | undefined> => {
     requireShell(event);
     if (installing) return;
+    if (options.updating?.()) return { error: "Morka is preparing to restart for an update." };
     installing = true;
     try {
       const name = portableAppName(rawName);
@@ -84,6 +86,7 @@ function registerInstaller(
   });
   window.on("close", event => { if (installing) event.preventDefault(); });
   window.once("closed", () => ipcMain.removeHandler("instance:install"));
+  return () => installing;
 }
 
 async function createLauncher() {
@@ -105,11 +108,18 @@ async function createLauncher() {
       throw new Error("This request is not allowed.");
     }
   };
-  registerInstaller(window, requireLauncher, async () => {
+  const library = appsDirectory(app.getPath("appData"));
+  const macDesktop = app.isPackaged && process.platform === "darwin";
+  const updates = await updatesForLauncher(macDesktop ? await currentDesktopRuntime() : undefined, state => {
+    if (!contents.isDestroyed()) contents.send("mac-update:state", state);
+  });
+  const updating = () => updates?.state.status === "installing";
+  const creating = registerInstaller(window, requireLauncher, async () => {
     const files = await snapshot(join(__dirname, "../app-runtime/starter"));
     files.set(entryFile, jsonFile(starterManifest));
     return files;
   }, {
+    updating,
     onInstalled(path, openError) {
       if (!openError) app.quit();
     },
@@ -118,9 +128,9 @@ async function createLauncher() {
   ipcMain.handle("instance:wake", async (event, kind: unknown, gitUrl: unknown): Promise<{ error: string } | undefined> => {
     requireLauncher(event);
     if (waking) return;
+    if (updating()) return { error: "Morka is preparing to restart for an update." };
     waking = true;
     try {
-      const library = appsDirectory(app.getPath("appData"));
       let checkout;
       if (kind === "git") checkout = await importGitProject(library, gitUrl);
       else if (kind === "folder" || kind === "archive") {
@@ -145,7 +155,26 @@ async function createLauncher() {
   });
   window.on("close", event => { if (waking) event.preventDefault(); });
   window.once("closed", () => ipcMain.removeHandler("instance:wake"));
+  ipcMain.handle("mac-update:state", event => { requireLauncher(event); return updates?.state; });
+  ipcMain.handle("mac-update:check", event => { requireLauncher(event); return updates?.check(); });
+  ipcMain.handle("mac-update:restart", event => {
+    requireLauncher(event);
+    return updates?.restart(async () => {
+      if (creating() || waking) throw new Error("Wait for the project to finish opening, then try again.");
+      if (await runningProject(library)) throw new Error("Close your open projects to install the update.");
+    });
+  });
+  let checkTimer: ReturnType<typeof setInterval> | undefined;
+  window.once("closed", () => {
+    clearInterval(checkTimer);
+    for (const channel of ["mac-update:state", "mac-update:check", "mac-update:restart"]) ipcMain.removeHandler(channel);
+  });
   await window.loadFile(index);
+  if (macDesktop) await registerCurrentDesktopRuntime();
+  if (updates && !window.isDestroyed()) {
+    void updates.check();
+    checkTimer = setInterval(() => void updates.check(), 24 * 60 * 60 * 1000);
+  }
 }
 
 type PendingRuntimeUpgrade = { plan: RuntimeUpgradePlan; release: AppRelease };
@@ -796,7 +825,7 @@ async function start() {
   mkdirSync(data, { recursive: true, mode: 0o700 });
   app.setPath("userData", data);
   app.setName(instance?.name ?? "Morka");
-  if (!instance) {
+  if (!instance && !macBundle) {
     const runtime = await registerCurrentDesktopRuntime();
     if (process.platform === "win32") app.setAppUserModelId(runtime ? `local.morka.desktop.${runtime.version}` : "local.morka.desktop");
   }

@@ -23,6 +23,18 @@ body.launcher {
   user-select: none;
 }
 #morka-home canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#launcher-update {
+  position: absolute;
+  inset: auto 14px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+#launcher-update .app-button { padding: 4px 9px; font-size: 11px; }
+#launcher-update-status { overflow-wrap: anywhere; }
 #new-app {
   position: absolute;
   border: 0;

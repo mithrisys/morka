@@ -2,12 +2,13 @@ import { execFileSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, rename, rm, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
-import { desktopAssets } from "./metadata.mjs";
+import { desktopAssets, macUpdateAssets, writeMacUpdateMetadata } from "./metadata.mjs";
+import { macSigningConfig, signAndNotarizeMacUpdate } from "./macos-signing.mjs";
 
 const require = createRequire(import.meta.url);
-const { buildMacBundle, writeDesktopResources } = require("../../dist/instances/distribution.js");
+const { buildMacBundle, configureMacDesktopUpdates, writeDesktopResources } = require("../../dist/instances/distribution.js");
 const { writeDesktopRuntime } = require("../../dist/instances/desktop-runtimes.js");
-const { checkStarterRuntime } = require("../../dist/instances/runtime-compatibility.js");
+const { checkStarterRuntime, runtimeContract } = require("../../dist/instances/runtime-compatibility.js");
 const { version } = JSON.parse(await readFile("package.json", "utf8"));
 const product = `Morka-${version}`;
 const linuxExecutable = `morka-${version.toLowerCase()}`;
@@ -31,8 +32,17 @@ try {
   const image = join(stage, "image");
   await mkdir(image);
   if (process.platform === "darwin") {
-    const bundle = join(image, `${product}.app`);
+    const signing = macSigningConfig(process.env);
+    const bundle = join(image, signing ? "Morka.app" : `${product}.app`);
     await buildMacBundle(process.cwd(), bundle, kit);
+    if (signing) {
+      await configureMacDesktopUpdates(process.cwd(), bundle, version, signing.buildNumber);
+      await signAndNotarizeMacUpdate(bundle, signing);
+      const update = macUpdateAssets(version);
+      run("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", bundle, join(stage, update.zip)]);
+      await writeMacUpdateMetadata(stage, version, runtimeContract.supportedRuntimeApis);
+      Object.assign(assets, update);
+    }
     await symlink("/Applications", join(image, "Applications"));
     run("hdiutil", ["create", "-quiet", "-format", "UDZO", "-volname", "Morka", "-srcfolder", image, join(stage, assets.dmg)]);
   } else {

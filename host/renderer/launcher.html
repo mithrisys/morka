@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="launcher/launcher.css">
   <script src="app-setup.js" defer></script>
   <script src="launcher/cell.js" defer></script>
+  <script src="launcher/updates.js" defer></script>
 </head>
 <body class="launcher">
   <header class="titlebar" aria-hidden="true"></header>
@@ -20,6 +21,10 @@
       <button type="button" id="wake-project" aria-haspopup="dialog">or wake up a morka…</button>
     </div>
   </main>
+  <div id="launcher-update" hidden>
+    <span id="launcher-update-status" role="status"></span>
+    <button type="button" class="app-button" id="launcher-update-action">Check for updates</button>
+  </div>
   <dialog class="app-setup" id="wake-dialog" aria-labelledby="wake-title">
     <form>
       <h2 id="wake-title">Wake up a morka</h2>

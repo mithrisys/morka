@@ -31,6 +31,34 @@ test("desktop downloads select the asset by platform and architecture", () => {
   });
 });
 
+test("macOS update metadata pins the ZIP and the app runtime APIs", async t => {
+  const { writeMacUpdateMetadata, macUpdateAssets } = await import("../scripts/releases/metadata.mjs");
+  const { createHash } = await import("node:crypto");
+  const dir = await mkdtemp(join(tmpdir(), "morka-update-metadata-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const version = "1.2.3-beta.4";
+  const { zip, feed } = macUpdateAssets(version);
+  assert.equal(feed, "beta-mac.yml");
+  await writeFile(join(dir, zip), "zip bytes");
+  await writeMacUpdateMetadata(dir, version, [1, 2]);
+  assert.deepEqual(JSON.parse(await readFile(join(dir, feed), "utf8")), {
+    version, supportedRuntimeApis: [1, 2], files: [{ url: zip, size: 9,
+      sha512: createHash("sha512").update("zip bytes").digest("base64") }],
+  });
+});
+
+test("macOS releases require a complete set of signing inputs before producing updates", async () => {
+  const { macSigningConfig } = await import("../scripts/releases/macos-signing.mjs");
+  assert.equal(macSigningConfig({ MORKA_MAC_BUILD_NUMBER: "8" }), undefined);
+  const credentials = {
+    MORKA_MAC_CERTIFICATE: "synthetic", MORKA_MAC_CERTIFICATE_PASSWORD: "synthetic",
+    MORKA_MAC_NOTARY_KEY: "synthetic", MORKA_MAC_NOTARY_KEY_ID: "synthetic", MORKA_MAC_NOTARY_ISSUER: "synthetic",
+  };
+  assert.throws(() => macSigningConfig(credentials), /numeric/);
+  assert.throws(() => macSigningConfig({ ...credentials, MORKA_MAC_NOTARY_KEY: "", MORKA_MAC_BUILD_NUMBER: "8" }), /credentials/);
+  assert.equal(macSigningConfig({ ...credentials, MORKA_MAC_BUILD_NUMBER: "8" }).buildNumber, "8");
+});
+
 test("checksums require the exact desktop downloads for all supported architectures", async t => {
   const dir = await mkdtemp(join(tmpdir(), "morka-checksums-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -54,6 +82,15 @@ test("checksums require the exact desktop downloads for all supported architectu
     await assert.rejects(writeChecksums(dir, "1.2.3"));
     await writeFile(join(dir, file), "abc");
   }
+  const { macUpdateAssets } = await import("../scripts/releases/metadata.mjs");
+  const { zip, feed } = macUpdateAssets("1.2.3");
+  await writeFile(join(dir, zip), "abc");
+  await assert.rejects(writeChecksums(dir, "1.2.3"));
+  await writeFile(join(dir, feed), "abc");
+  await writeChecksums(dir, "1.2.3");
+  const checksums = await readFile(join(dir, "SHA256SUMS.txt"), "utf8");
+  assert.ok(checksums.includes(sum + "  " + zip + "\n"));
+  assert.ok(checksums.includes(sum + "  " + feed + "\n"));
   await writeFile(join(dir, "unexpected"), "extra");
   await assert.rejects(writeChecksums(dir, "1.2.3"));
 });

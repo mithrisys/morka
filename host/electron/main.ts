@@ -735,9 +735,12 @@ async function start() {
   const macBundle = app.isPackaged && process.platform === "darwin";
   const metadata = macBundle ? join(process.resourcesPath, releaseFile) : "";
   const release = macBundle && statSync(metadata, { throwIfNoEntry: false })?.isFile() ? readRelease(metadata) : undefined;
+  const projectArgument = app.isPackaged && (hasDesktopProjectShortcuts || (macBundle && !release))
+    ? process.argv.find(argument => argument.startsWith(desktopProjectArgument))?.slice(desktopProjectArgument.length) : undefined;
+  // Keep the handoff and any competing project launches out of the Dock.
+  if (macBundle && projectArgument !== undefined) app.setActivationPolicy("accessory");
   const macProject = macBundle && !release ? await readMacProjectLaunch(process.resourcesPath) : undefined;
-  const desktopProject = app.isPackaged && (hasDesktopProjectShortcuts || (macBundle && !release))
-    ? process.argv.find(argument => argument.startsWith(desktopProjectArgument))?.slice(desktopProjectArgument.length) ?? macProject?.repository : undefined;
+  const desktopProject = projectArgument ?? macProject?.repository;
   if (macProject && desktopProject !== macProject.repository) throw new Error("Open the requested project from its installed launcher.");
   const requestedRepository = desktopProject ?? process.env.MORKA_NPM_REPOSITORY?.trim();
   if (desktopProject !== undefined && !isAbsolute(desktopProject)) throw new Error("The project path must be absolute.");
@@ -812,6 +815,7 @@ async function start() {
   if (macBundle && desktopProject) app.on("activate", focusWindow);
   app.on("window-all-closed", () => app.quit());
   await app.whenReady();
+  if (macBundle && desktopProject !== undefined) app.setActivationPolicy("regular");
   if (hasDesktopProjectShortcuts) Menu.setApplicationMenu(null);
   else if (process.platform === "darwin" && instance) {
     // Electron's default menu can be created before the project name is read.

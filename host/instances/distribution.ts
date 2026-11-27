@@ -41,9 +41,9 @@ async function copyDependencies(source: string, target: string, dependencies: st
   }
 }
 
-export async function setBundleIdentity(plist: string, values: Record<string, string>) {
+export async function setBundleIdentity(plist: string, values: Record<string, string | boolean>) {
   for (const [key, value] of Object.entries(values)) {
-    await run("/usr/bin/plutil", ["-replace", key, "-string", value, plist]);
+    await run("/usr/bin/plutil", ["-replace", key, typeof value === "boolean" ? "-bool" : "-string", String(value), plist]);
   }
 }
 
@@ -94,6 +94,7 @@ export async function prepareMacProjectExecutable(
       CFBundleName: spec.name,
       CFBundleDisplayName: spec.name,
       CFBundleIdentifier: `local.morka.project.${project}`,
+      LSUIElement: true,
     });
     await signBundle(bundle, !signature);
     try {

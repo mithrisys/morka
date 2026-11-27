@@ -16,7 +16,8 @@ async function macAppIdentity(pid) {
       const application = $.NSRunningApplication.runningApplicationWithProcessIdentifier(Number(args[0]));
       const bundle = $.NSBundle.bundleWithURL(application.bundleURL);
       return JSON.stringify({ name: ObjC.unwrap(application.localizedName),
-        bundleName: ObjC.unwrap(bundle.objectForInfoDictionaryKey('CFBundleName')) });
+        bundleName: ObjC.unwrap(bundle.objectForInfoDictionaryKey('CFBundleName')),
+        visibleInDock: Number(application.activationPolicy) === 0 });
     }
   `, String(pid)]);
   return JSON.parse(stdout);
@@ -56,7 +57,7 @@ async function testSharedInstall(root, support, source) {
     const metadata = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8"));
     await writeFile(join(appRoot, "package.json"), JSON.stringify({ ...metadata, main: "install-test.cjs" }));
     await writeFile(join(appRoot, "install-test.cjs"), `
-      const { app, dialog, Menu } = require("electron");
+      const { app, BrowserWindow, dialog, Menu } = require("electron");
       const { writeFile } = require("node:fs/promises");
       const { join } = require("node:path");
       const { installRepository, openInstalledProject, registerCurrentDesktopRuntime } = require("./dist/instances/desktop.js");
@@ -67,6 +68,20 @@ async function testSharedInstall(root, support, source) {
       if (repository === "--register-runtime") {
         registerCurrentDesktopRuntime().then(() => app.exit(0), error => { console.error(error); app.exit(1); });
       } else if (repository.startsWith("--morka-project=")) {
+        if (!require("node:fs").existsSync(join(process.resourcesPath, "morka-project-launch.json"))) {
+          const { execFile } = require("node:child_process");
+          const run = require("node:util").promisify(execFile);
+          const macAppIdentity = ${macAppIdentity.toString()};
+          const distribution = require("./dist/instances/distribution.js");
+          const prepare = distribution.prepareMacProjectExecutable;
+          distribution.prepareMacProjectExecutable = async (...args) => {
+            await app.whenReady();
+            const identity = await macAppIdentity(process.pid);
+            const receipt = join(${JSON.stringify(temporary)}, args[3].id + "-handoff.json");
+            await writeFile(receipt, JSON.stringify({ ...identity, windows: BrowserWindow.getAllWindows().length }));
+            return prepare(...args);
+          };
+        }
         const contract = require(join(process.resourcesPath, "morka-runtime.json"));
         if (contract.runtimeApi === 2) {
           const assert = require("node:assert/strict");
@@ -107,6 +122,7 @@ async function testSharedInstall(root, support, source) {
               pid: process.pid, name: app.name, executable: process.execPath, title: window.getTitle(),
               menuTitle: Menu.getApplicationMenu().items[0].label,
               aboutTitle: Menu.getApplicationMenu().items[0].submenu.items.find(item => item.role === "about").label,
+              windows: BrowserWindow.getAllWindows().length,
             }));
           });
         });
@@ -177,7 +193,15 @@ async function testSharedInstall(root, support, source) {
       assert.equal(started.title, name);
       assert.equal(started.menuTitle, name);
       assert.equal(started.aboutTitle, `About ${name}`);
-      assert.deepEqual(await macAppIdentity(project.pid), { name, bundleName: name });
+      assert.deepEqual(await macAppIdentity(project.pid), { name, bundleName: name, visibleInDock: true });
+      assert.equal(started.windows, 1);
+      const handoffFile = join(temporary, spec.id + "-handoff.json");
+      const handoff = JSON.parse(await readFile(handoffFile, "utf8"));
+      assert.equal(handoff.visibleInDock, false, "The shared runtime handoff should stay out of the Dock");
+      assert.equal(handoff.windows, 0, "Only the final project process should open a window");
+      const plist = join(bundle, "Contents/Info.plist");
+      const launcherPolicy = await run("/usr/bin/plutil", ["-extract", "LSUIElement", "raw", plist]);
+      assert.equal(launcherPolicy.stdout.trim(), "true");
       const runningResources = resolve(started.executable, "../../Resources");
       assert.deepEqual(JSON.parse(await readFile(join(runningResources, "morka-project-launch.json"), "utf8")), {
         repository, runtimeResources: join(host, "Contents/Resources"),
@@ -189,12 +213,20 @@ async function testSharedInstall(root, support, source) {
         const response = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1000) });
         assert.deepEqual(await response.json(), { saved: name, node: expectedNode });
       });
+      if (name === "Morka Shared Test B") {
+        // Existing installed launchers have no background activation setting in their plist.
+        await run("/usr/bin/plutil", ["-remove", "LSUIElement", plist]);
+        await signBundle(bundle);
+      }
       const reopened = join(profile, "reopened");
-      await rm(reopened, { force: true });
+      await Promise.all([rm(reopened, { force: true }), rm(handoffFile)]);
       await run("/usr/bin/open", [bundle]);
       await waitFor(() => readFile(reopened, "utf8"));
       assert.equal(JSON.parse(await readFile(receipt, "utf8")).pid, project.pid);
-      console.log(`PASS: ${name} has a ${bundleSize} KiB launcher and a native project name, and uses Morka ${metadata.version}.`);
+      const reopenHandoff = JSON.parse(await readFile(handoffFile, "utf8"));
+      assert.equal(reopenHandoff.visibleInDock, false);
+      assert.equal(reopenHandoff.windows, 0);
+      console.log(`PASS: ${name} opens one window with its native name, and its ${bundleSize} KiB launcher stays out of the Dock.`);
     }
     assert.equal(new Set(projects.map(project => project.pid)).size, projects.length);
     assert.deepEqual((await readdir(join(support, "Morka Apps", "runtimes", `${process.platform}-${process.arch}`))).sort(),
@@ -224,7 +256,9 @@ async function testSharedInstall(root, support, source) {
     assert.deepEqual(JSON.parse(await readFile(join(runningResources, "morka-project-launch.json"), "utf8")), {
       repository: project.repository, runtimeResources: nextResources,
     });
-    assert.deepEqual(await macAppIdentity(project.pid), { name: project.spec.name, bundleName: project.spec.name });
+    assert.deepEqual(await macAppIdentity(project.pid), {
+      name: project.spec.name, bundleName: project.spec.name, visibleInDock: true,
+    });
     assert.equal(await readFile(join(temporary, "upgrade-confirmation"), "utf8"), "Open in Morka to Upgrade");
     await waitFor(async () => assert.deepEqual(readRelease(repositoryFile(project.repository, "release.json")), {
       ...project.spec, runtimeVersion: nextVersion, runtimeApi: 2,

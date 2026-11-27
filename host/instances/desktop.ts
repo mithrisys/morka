@@ -199,6 +199,7 @@ async function installSharedMacProject(repository: string, spec: AppRelease, run
         CFBundleName: name, CFBundleDisplayName: name, CFBundleIconFile: appIcon,
         CFBundleIdentifier: `local.morka.project.${config.profile}`, CFBundleExecutable: macLauncher,
         CFBundlePackageType: "APPL", CFBundleInfoDictionaryVersion: "6.0",
+        LSUIElement: true,
       })),
     ]);
     await promisify(execFile)("/usr/bin/plutil", ["-convert", "xml1", plist]);

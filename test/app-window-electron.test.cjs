@@ -123,9 +123,11 @@ async function testApp() {
     assert.equal(await evaluate("document.querySelector('#agent-setup-open') === null"), true);
     window.focus();
     await evaluate("document.querySelector('#agent-indicator').focus()");
+    await waitFor(() => evaluate("document.hasFocus() && document.activeElement.id === 'agent-indicator'"),
+      "The AI setup button should have keyboard focus");
     contents.sendInputEvent({ type: "keyDown", keyCode: "Space" });
     contents.sendInputEvent({ type: "keyUp", keyCode: "Space" });
-    await waitFor(() => evaluate("document.querySelector('#agent-setup[open] #agent-setup-accounts').textContent.includes('Test Agent')"), "Keyboard activation should open AI setup");
+    await waitFor(() => evaluate("document.querySelector('#agent-setup[open] #agent-setup-accounts')?.textContent.includes('Test Agent')"), "Keyboard activation should open AI setup");
     await evaluate("document.querySelector('#agent-setup').close()");
     assert.equal(await evaluate("document.activeElement.id"), "agent-indicator");
     const gaps = await evaluate(`Array.from(document.querySelector('#transcript').children)

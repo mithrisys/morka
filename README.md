@@ -2,8 +2,8 @@
   <img src="host/branding/morka-icon.png" width="96" height="96" alt="">
 </p>
 <h1 align="center">Morka</h1>
-<p align="center"><strong>Give your AI subscription a desktop icon.</strong><br>
-Build your app with Codex or Claude Code. Put the same AI behind a button. Keep shaping the app while you use it.</p>
+<p align="center"><strong>Your app’s next version starts with “I wish…”</strong><br>
+Build a desktop app with your coding agent, using the AI subscription you already have. That same subscription powers the AI features inside your app. Tell your agent what you wish were different, and watch the app change without losing your place.</p>
 <p align="center">
   <a href="https://github.com/mithrisys/morka/releases"><strong>Download Morka</strong></a>
   · <a href="#quickstart">Build your first app</a>

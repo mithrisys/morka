@@ -2,7 +2,7 @@
   <img src="host/branding/morka-icon.png" width="96" height="96" alt="">
 </p>
 <h1 align="center">Morka</h1>
-<p align="center"><strong>Build the desktop app you wish existed. Change it while you use it.</strong></p>
+<p align="center"><strong>Build an AI-powered desktop app with your existing Codex or Claude Code subscription. Change it while you use it.</strong></p>
 <p align="center">
   <a href="https://github.com/mithrisys/morka/releases"><strong>Download Morka</strong></a>
   · <a href="#quickstart">Build your first app</a>

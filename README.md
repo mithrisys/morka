@@ -2,17 +2,15 @@
   <img src="host/branding/morka-icon.png" width="96" height="96" alt="">
 </p>
 <h1 align="center">Morka</h1>
-<p align="center"><strong>Your app’s next version starts with “I wish…”</strong><br>
-Build a desktop app with your coding agent, using the AI subscription you already have. That same subscription powers the AI features inside your app. Tell your agent what you wish were different, and watch the app change without losing your place.</p>
+<p align="center"><strong>“Morka, I wish my desktop app could…”</strong><br>
+Your existing AI subscription powers your coding agent and the AI inside your app. Watch your edits go live without losing your place.</p>
 <p align="center">
   <a href="https://github.com/mithrisys/morka/releases"><strong>Download Morka</strong></a>
   · <a href="#quickstart">Build your first app</a>
   · <a href="#run-morka-from-source">Run from source</a>
 </p>
 
-Morka lets you build personal desktop apps for macOS, Windows, and Linux by chatting with an AI agent. Use your existing Codex or Claude Code subscription to write the app and power the AI features inside it, without setting up a separate API key.
-
-Say you keep a scratchpad open during meetings. You want one button that reads the messy notes and pulls out what you promised to do. With Morka, you can ask for that button, try it on a note, and keep shaping the app from the chat beside it. Tomorrow, open your scratchpad by name from Applications, the Start menu, or your Linux app menu.
+Build for macOS, Windows, or Linux with Codex or Claude Code. No separate API key required.
 
 ## Quickstart
 

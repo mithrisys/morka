@@ -21,7 +21,9 @@ npm start
 
 `npm ci` installs the pinned versions of `@morkaai/runtime` and `@morkaai/packager`. Electron downloads its binary for the current platform. Use `npm run install:app` to add this checkout to Applications on macOS, the Start menu on Windows, or the application menu on Linux. The installer fetches dependencies if needed. Use `npm run build` to create a `.command`, `.cmd`, or `.sh` launcher in `dist/` that opens the same checkout using local Node.js and npm.
 
-On macOS, `npm run package:mac` builds a self-contained app under `dist/`. Recipients can run the prepared release offline and connect their own supported CLI account for AI features.
+On macOS, projects created or imported from the installed Morka app get a lightweight launcher in `~/Applications`. That launcher uses the runtime in `Morka.app` and opens the same checkout and private profile.
+
+Run `npm run package:mac` to build a self-contained app under `dist/`. Recipients can run the prepared release offline without Morka installed and connect their own supported CLI account for AI features.
 
 ## Project contract
 

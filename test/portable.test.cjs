@@ -259,6 +259,49 @@ test("the packaged Windows host installs a shared-folder project without a proje
   assert.deepEqual(launches, [launch, launch]);
 }));
 
+test("the packaged macOS host installs and opens a lightweight project launcher", () => fixture(async temp => {
+  const module = { exports: {} };
+  const path = join(root, "dist/instances/desktop.js");
+  const local = createRequire(path);
+  const host = join(temp, "Morka.app");
+  const resourcesPath = join(host, "Contents", "Resources");
+  const repository = join(temp, "Shared Project");
+  const spec = { version: 1, id: randomUUID(), name: "Shared Project", iconColor: 0 };
+  const bundle = join(temp, "Applications", `${spec.name}.app`);
+  const launcher = join(resourcesPath, "app", "dist", "instances", "MorkaProject");
+  const icon = join(repository, ".morka", "icons", "AppIcon.icns");
+  await mkdir(dirname(launcher), { recursive: true });
+  await mkdir(dirname(icon), { recursive: true });
+  await writeFile(launcher, "launcher", { mode: 0o755 });
+  await writeFile(join(host, "Contents", "Info.plist"), "plist");
+  await writeFile(icon, "icon");
+  const launches = [];
+  const mocks = {
+    electron: { app: { isPackaged: true, getPath: () => temp, getAppPath: () => join(resourcesPath, "app") } },
+    "node:child_process": { execFile(file, args, callback) {
+      if (file === "/usr/bin/open") launches.push([file, ...args]);
+      callback(null, "");
+    } },
+    "../project/toolchain": { async bundledToolchain() { assert.fail("The desktop installer must use the shared host"); } },
+    "./distribution": { async setBundleIdentity() {}, async signBundle() {} },
+    "./macos": {},
+    "original-fs": require("node:fs"),
+  };
+  runInNewContext(await readFile(path, "utf8"), {
+    module, exports: module.exports, require: name => mocks[name] ?? local(name),
+    process: { platform: "darwin", execPath: join(host, "Contents", "MacOS", "Morka"), resourcesPath, env: {} },
+  });
+  assert.equal(await module.exports.openInstalledProject(repository, spec), false);
+  await module.exports.installRepository(repository, spec);
+  assert.equal(await readFile(join(bundle, "Contents", "MacOS", "MorkaProject"), "utf8"), "launcher");
+  assert.deepEqual((await readdir(join(bundle, "Contents"))).sort(), ["Info.plist", "MacOS", "Resources"]);
+  assert.deepEqual(JSON.parse(await readFile(join(bundle, "Contents", "Resources", "morka-launch.json"), "utf8")), {
+    host, repository, profile: repositoryProfileId(spec, repository),
+  });
+  assert.equal(await module.exports.openInstalledProject(repository, spec), true);
+  assert.deepEqual(launches, [["/usr/bin/open", bundle], ["/usr/bin/open", bundle]]);
+}));
+
 test("opening an installed macOS project hands the bundle to Launch Services", () => fixture(async temp => {
   const module = { exports: {} };
   const path = join(root, "dist/instances/desktop.js");

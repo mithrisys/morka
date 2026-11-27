@@ -681,7 +681,9 @@ async function createWindow(instance: AppInstance, release?: AppRelease, sourceL
 
 async function start() {
   const macBundle = app.isPackaged && process.platform === "darwin";
-  const desktopProject = app.isPackaged && hasDesktopProjectShortcuts
+  const metadata = macBundle ? join(process.resourcesPath, releaseFile) : "";
+  const release = macBundle && statSync(metadata, { throwIfNoEntry: false })?.isFile() ? readRelease(metadata) : undefined;
+  const desktopProject = app.isPackaged && (hasDesktopProjectShortcuts || (macBundle && !release))
     ? process.argv.find(argument => argument.startsWith(desktopProjectArgument))?.slice(desktopProjectArgument.length) : undefined;
   const requestedRepository = desktopProject ?? process.env.MORKA_NPM_REPOSITORY?.trim();
   if (desktopProject !== undefined && !isAbsolute(desktopProject)) throw new Error("The project path must be absolute.");
@@ -696,8 +698,6 @@ async function start() {
     app.exit(0);
     return;
   }
-  const metadata = macBundle ? join(process.resourcesPath, releaseFile) : "";
-  const release = macBundle && statSync(metadata, { throwIfNoEntry: false })?.isFile() ? readRelease(metadata) : undefined;
   const instance = release ? { ...release, projectDirectory: join(process.resourcesPath, releaseProject) }
     : npmRepository ? {
       ...readRelease(repositoryFile(npmRepository, "release.json")),
@@ -716,17 +716,21 @@ async function start() {
     app.quit();
     return;
   }
-  app.on("second-instance", () => {
+  const focusWindow = () => {
     const [window] = BrowserWindow.getAllWindows();
     if (!window) return;
     if (window.isMinimized()) window.restore();
     window.focus();
-  });
+  };
+  app.on("second-instance", focusWindow);
+  if (macBundle && desktopProject) app.on("activate", focusWindow);
   app.on("window-all-closed", () => app.quit());
   await app.whenReady();
   if (hasDesktopProjectShortcuts) Menu.setApplicationMenu(null);
-  if (instance) await createWindow(instance, release, Boolean(npmRepository && !release));
-  else {
+  if (instance) {
+    if (macBundle && desktopProject) app.dock?.setIcon(projectIcon(instance.iconColor));
+    await createWindow(instance, release, Boolean(npmRepository && !release));
+  } else {
     app.dock?.setIcon(join(__dirname, "../branding/morka-icon.png"));
     await createLauncher();
   }

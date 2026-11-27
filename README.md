@@ -72,7 +72,9 @@ Reuse instructions, agent skills, and assets across apps with [Shadows](docs/app
 
 Publish your app's Git repository so others can open it in Morka or run it with `npm ci` and `npm start` from the app repository root. Recipients connect their own supported agent account for AI features.
 
-On macOS, run `npm run package:mac` from the app repository after `npm ci` to create a self-contained `.app` in `dist/`. The packaged release includes Node.js and its prepared dependencies, so it can launch offline. See the [app authoring guide](docs/app-authoring.md#work-with-a-project-repository) for local install and launcher commands.
+On macOS, creating or importing a project from the installed Morka app puts a lightweight launcher in `~/Applications`. It uses the runtime in `Morka.app` and opens the project's existing local profile.
+
+Run `npm run package:mac` from the app repository after `npm ci` to create a self-contained `.app` in `dist/`. The packaged release includes Electron, Node.js and its prepared dependencies, so it can launch offline without Morka installed. See the [app authoring guide](docs/app-authoring.md#work-with-a-project-repository) for local install and launcher commands.
 
 ## Run Morka from source
 

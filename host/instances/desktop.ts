@@ -12,12 +12,17 @@ import { setBundleIdentity, signBundle } from "./distribution";
 import { projectIcon } from "./macos";
 import { appIcon, appsDirectory, portableAppName, repositoryFile, repositoryProfileId, type AppRelease } from "./repository";
 
-type LaunchConfig = {
-  repository: string; profile: string; node: string; npm: string; electron: string; bundledNode: boolean; toolchainRevision?: string;
+type ProjectLaunchConfig = { repository: string; profile: string };
+type LaunchConfig = ProjectLaunchConfig & {
+  node: string; npm: string; electron: string; bundledNode: boolean; toolchainRevision?: string;
 };
+type SharedMacLaunchConfig = ProjectLaunchConfig & { host: string };
 
 const launchFile = "morka-launch.json";
-const macAppResources = join("Contents", "Resources", "app");
+const macResources = join("Contents", "Resources");
+const macAppResources = join(macResources, "app");
+const macLauncher = "MorkaProject";
+const macLauncherBinary = join("Contents", "MacOS", macLauncher);
 export const desktopProjectArgument = "--morka-project=";
 const bootstrap = `
 const { join } = require("node:path");
@@ -66,17 +71,27 @@ function macApplication(name: string) {
   return join(app.getPath("home"), "Applications", `${name}.app`);
 }
 
-function launchConfig(directory: string): Promise<LaunchConfig | undefined> {
+function launchConfig(directory: string): Promise<ProjectLaunchConfig | undefined> {
   return readFile(join(directory, launchFile), "utf8").then(JSON.parse).catch(() => undefined);
 }
 
-async function installMacApp(name: string, config: LaunchConfig, library: string, toolchain?: string) {
+function sharedMacLauncher() {
+  return join(app.getAppPath(), "dist", "instances", macLauncher);
+}
+
+async function usesSharedMacRuntime() {
+  return process.platform === "darwin" && app.isPackaged && (await info(sharedMacLauncher()))?.isFile();
+}
+
+async function installMacBundle(
+  name: string, config: ProjectLaunchConfig, library: string, configDirectory: string, binary: string,
+  build: (bundle: string) => Promise<void>,
+) {
   const bundle = macApplication(name);
   const applications = dirname(bundle);
-  const binary = join("Contents", "MacOS", basename(process.execPath));
   const existing = await info(bundle);
   if (existing) {
-    const saved = existing.isDirectory() ? await launchConfig(join(bundle, macAppResources)) : undefined;
+    const saved = existing.isDirectory() ? await launchConfig(join(bundle, configDirectory)) : undefined;
     if (saved?.profile !== config.profile || saved.repository !== config.repository) {
       throw new Error(`An app named “${name}” already exists in Applications.`);
     }
@@ -90,21 +105,7 @@ async function installMacApp(name: string, config: LaunchConfig, library: string
   const backup = join(stage, "previous.app");
   let keepStage = false;
   try {
-    await nativeFs.cp(resolve(process.execPath, "../../.."), replacement,
-      { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
-    const resources = join(replacement, "Contents", "Resources");
-    await nativeFs.rm(join(resources, "default_app.asar"), { force: true });
-    await writeBootstrap(join(replacement, macAppResources), name, config);
-    await copyFile(repositoryFile(config.repository, "icons", appIcon), join(resources, appIcon));
-    if (toolchain) {
-      await cp(toolchain, join(replacement, macAppResources, "toolchain"),
-        { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
-    }
-    await setBundleIdentity(join(replacement, "Contents", "Info.plist"), {
-      CFBundleName: name, CFBundleDisplayName: name, CFBundleIconFile: appIcon,
-      CFBundleIdentifier: `local.morka.project.${config.profile}`,
-    });
-    await signBundle(replacement, true);
+    await build(replacement);
     if (existing) {
       await requireClosed(library, config.profile);
       await rename(bundle, backup);
@@ -126,6 +127,54 @@ async function installMacApp(name: string, config: LaunchConfig, library: string
   } finally {
     if (!keepStage) await nativeFs.rm(stage, { recursive: true, force: true });
   }
+}
+
+async function installMacApp(name: string, config: LaunchConfig, library: string, toolchain?: string) {
+  const binary = join("Contents", "MacOS", basename(process.execPath));
+  return installMacBundle(name, config, library, macAppResources, binary, async bundle => {
+    await nativeFs.cp(resolve(process.execPath, "../../.."), bundle,
+      { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
+    const resources = join(bundle, macResources);
+    await nativeFs.rm(join(resources, "default_app.asar"), { force: true });
+    await writeBootstrap(join(bundle, macAppResources), name, config);
+    await copyFile(repositoryFile(config.repository, "icons", appIcon), join(resources, appIcon));
+    if (toolchain) {
+      await cp(toolchain, join(bundle, macAppResources, "toolchain"),
+        { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
+    }
+    await setBundleIdentity(join(bundle, "Contents", "Info.plist"), {
+      CFBundleName: name, CFBundleDisplayName: name, CFBundleIconFile: appIcon,
+      CFBundleIdentifier: `local.morka.project.${config.profile}`,
+    });
+    await signBundle(bundle, true);
+  });
+}
+
+async function installSharedMacProject(repository: string, spec: AppRelease) {
+  const name = portableAppName(spec.name);
+  const library = appsDirectory(app.getPath("appData"));
+  const config: SharedMacLaunchConfig = {
+    repository, profile: repositoryProfileId(spec, repository), host: resolve(process.resourcesPath, "../.."),
+  };
+  const bundle = await installMacBundle(name, config, library, macResources, macLauncherBinary, async bundle => {
+    const resources = join(bundle, macResources);
+    const executable = join(bundle, macLauncherBinary);
+    const plist = join(bundle, "Contents", "Info.plist");
+    await Promise.all([mkdir(resources, { recursive: true }), mkdir(dirname(executable), { recursive: true })]);
+    await Promise.all([
+      copyFile(sharedMacLauncher(), executable),
+      copyFile(repositoryFile(repository, "icons", appIcon), join(resources, appIcon)),
+      writeTextAtomically(join(resources, launchFile), JSON.stringify(config)),
+      writeFile(plist, JSON.stringify({
+        CFBundleName: name, CFBundleDisplayName: name, CFBundleIconFile: appIcon,
+        CFBundleIdentifier: `local.morka.project.${config.profile}`, CFBundleExecutable: macLauncher,
+        CFBundlePackageType: "APPL", CFBundleInfoDictionaryVersion: "6.0",
+      })),
+    ]);
+    await promisify(execFile)("/usr/bin/plutil", ["-convert", "xml1", plist]);
+    await signBundle(bundle);
+  });
+  await launchMacApp(bundle);
 }
 
 function iconFile(png: Buffer) {
@@ -235,6 +284,13 @@ export async function openInstalledProject(repository: string, spec: AppRelease)
   const mac = process.platform === "darwin";
   const fromHost = app.isPackaged && !mac;
   const bundle = mac ? macApplication(spec.name) : undefined;
+  if (bundle && await usesSharedMacRuntime()) {
+    const saved = await launchConfig(join(bundle, macResources));
+    if (saved?.profile !== profile || saved.repository !== repository ||
+        !(await info(join(bundle, macLauncherBinary)))?.isFile()) return false;
+    await launchMacApp(bundle);
+    return true;
+  }
   if (!fromHost) {
     const bootstrapDirectory = bundle ? join(bundle, macAppResources) : directory;
     const saved = await launchConfig(bootstrapDirectory);
@@ -261,6 +317,7 @@ export async function openInstalledProject(repository: string, spec: AppRelease)
 }
 
 export async function installRepository(repository: string, spec: AppRelease) {
+  if (await usesSharedMacRuntime()) return installSharedMacProject(repository, spec);
   if (process.platform === "linux" && app.isPackaged) return installPackagedLinuxProject(repository, spec);
   if (process.platform === "win32" && app.isPackaged) return installWindowsProject(repository, spec);
   const toolchain = await bundledToolchain(process.env.MORKA_DESKTOP_TOOLCHAIN);

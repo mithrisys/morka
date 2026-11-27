@@ -1,10 +1,130 @@
 const assert = require("node:assert/strict");
-const { execFileSync } = require("node:child_process");
-const { mkdtemp, mkdir, readFile, realpath, rm, writeFile } = require("node:fs/promises");
+const { execFile, execFileSync } = require("node:child_process");
+const { lstat, mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 const { setTimeout: delay } = require("node:timers/promises");
+const { promisify } = require("node:util");
 const { app } = require("electron");
+
+const run = promisify(execFile);
+
+async function waitFor(check) {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    try { return await check(); }
+    catch (error) {
+      if (Date.now() >= deadline) throw error;
+      await delay(100);
+    }
+  }
+}
+
+async function testSharedInstall(root, support, source) {
+  const { signBundle } = require("../dist/instances/distribution.js");
+  const { materializeRepository, repositoryProfileId } = require("../dist/instances/repository.js");
+  const { makeIcon } = require("../dist/instances/macos.js");
+  const { writableTree } = require("../dist/project/packages.js");
+  const kit = join(root, "dist/npm");
+  const host = join(temporary, "Morka.app");
+  const appRoot = join(host, "Contents/Resources/app");
+  const morka = join(host, "Contents/MacOS/Morka");
+  const hostNode = join(appRoot, "dist/toolchain/bin/node");
+  const projects = [];
+  try {
+    await run(join(root, "dist/toolchain/bin/node"), ["-e", `
+      const [root, host, kit] = process.argv.slice(1);
+      require('./dist/instances/distribution.js').buildMacBundle(root, host, kit).catch(error => {
+        console.error(error);
+        process.exitCode = 1;
+      });
+    `, root, host, kit], { cwd: root, timeout: 60_000 });
+    const metadata = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8"));
+    await writeFile(join(appRoot, "package.json"), JSON.stringify({ ...metadata, main: "install-test.cjs" }));
+    await writeFile(join(appRoot, "install-test.cjs"), `
+      const { app } = require("electron");
+      const { writeFile } = require("node:fs/promises");
+      const { join } = require("node:path");
+      const { installRepository, openInstalledProject } = require("./dist/instances/desktop.js");
+      const { readRelease, repositoryFile } = require("./dist/instances/repository.js");
+      app.setPath("home", ${JSON.stringify(temporary)});
+      app.setPath("appData", ${JSON.stringify(support)});
+      const repository = process.argv[1];
+      if (repository.startsWith("--morka-project=")) {
+        app.on("browser-window-created", (_event, window) => {
+          window.webContents.once("did-finish-load", async () => {
+            await writeFile(join(app.getPath("userData"), "started.json"), JSON.stringify({
+              pid: process.pid, name: app.name, executable: process.execPath, title: window.getTitle(),
+            }));
+          });
+        });
+        app.on("second-instance", () => { void writeFile(join(app.getPath("userData"), "reopened"), "yes"); });
+        app.on("activate", (_event, hasWindows) => {
+          if (hasWindows) void writeFile(join(app.getPath("userData"), "reopened"), "yes");
+        });
+        process.on("SIGTERM", () => app.quit());
+        require("./dist/electron/main.js");
+      } else {
+        app.setActivationPolicy("prohibited");
+        const spec = readRelease(repositoryFile(repository, "release.json"));
+        app.whenReady().then(async () => {
+          if (!await openInstalledProject(repository, spec)) await installRepository(repository, spec);
+        }).then(() => app.exit(0), error => { console.error(error); app.exit(1); });
+      }
+    `);
+    await signBundle(host);
+    const testSource = new Map(source);
+    testSource.set("server.mjs", Buffer.from(`
+      import { createServer } from "node:http";
+      import { readFile } from "node:fs/promises";
+      import { join } from "node:path";
+      const saved = await readFile(join(process.env.MORKA_DATA_DIR, "saved.txt"), "utf8");
+      createServer((request, response) => response.end(request.url === "/health" ? "ready" :
+        JSON.stringify({ saved, node: process.execPath }))).listen(Number(process.env.PORT), process.env.HOST);
+    `));
+    for (const name of ["Morka Shared Test A", "Morka Shared Test B"]) {
+      const spec = { version: 1, id: require("node:crypto").randomUUID(), name, iconColor: projects.length };
+      const repository = await materializeRepository(temporary, spec, testSource, kit, makeIcon(spec.iconColor));
+      const profile = join(support, "Morka Apps", "instances", repositoryProfileId(spec, repository));
+      const data = join(profile, "runtime-data");
+      await mkdir(data, { recursive: true });
+      await writeFile(join(data, "saved.txt"), name);
+      const project = { profile, pid: undefined };
+      projects.push(project);
+      await run(morka, [repository], { timeout: 15_000 });
+      const bundle = join(temporary, "Applications", `${name}.app`);
+      assert.deepEqual((await readdir(join(bundle, "Contents"))).sort(), ["Info.plist", "MacOS", "Resources", "_CodeSignature"]);
+      execFileSync("/usr/bin/codesign", ["--verify", "--deep", "--strict", bundle]);
+      const bundleSize = Number(execFileSync("/usr/bin/du", ["-sk", bundle], { encoding: "utf8" }).split(/\s+/)[0]);
+      assert.ok(bundleSize <= 2 * 1024, `Expected a launcher under 2 MiB, got ${bundleSize} KiB`);
+      await assert.rejects(lstat(join(repository, "node_modules")), { code: "ENOENT" });
+      const receipt = join(profile, "started.json");
+      const started = await waitFor(async () => JSON.parse(await readFile(receipt, "utf8")));
+      project.pid = started.pid;
+      assert.equal(started.name, name);
+      assert.equal(started.title, name);
+      assert.equal(await realpath(started.executable), await realpath(morka));
+      await waitFor(async () => {
+        const { port } = JSON.parse(await readFile(join(profile, "runtime", spec.id, "origin.json"), "utf8"));
+        const response = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1000) });
+        assert.deepEqual(await response.json(), { saved: name, node: hostNode });
+      });
+      const reopened = join(profile, "reopened");
+      await rm(reopened, { force: true });
+      await run("/usr/bin/open", [bundle]);
+      await waitFor(() => readFile(reopened, "utf8"));
+      assert.equal(JSON.parse(await readFile(receipt, "utf8")).pid, project.pid);
+      console.log(`PASS: ${name} is ${bundleSize} KiB, uses the shared Morka and Node executables, and reads its existing data.`);
+    }
+    assert.notEqual(projects[0].pid, projects[1].pid);
+  } finally {
+    for (const project of projects) {
+      if (project.pid) process.kill(project.pid, "SIGTERM");
+      await waitFor(() => assert.rejects(lstat(join(project.profile, "SingletonSocket")), { code: "ENOENT" }));
+    }
+    await writableTree(temporary);
+  }
+}
 
 let temporary;
 (async () => {
@@ -66,6 +186,7 @@ let temporary;
     }
   }
   console.log("PASS: the macOS installer registers a signed launcher and reopens the installed checkout.");
+  await testSharedInstall(root, support, source);
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

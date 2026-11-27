@@ -164,6 +164,11 @@ export async function buildMacBundle(
     keepEnglishLocalizations(join(contents, "Frameworks", "Electron Framework.framework", "Resources")),
   ]);
   await writeDesktopResources(engine, resources, name, kit, toolchain);
+  if (!spec) {
+    await run("/usr/bin/clang", ["-fobjc-arc", "-framework", "AppKit", "-mmacosx-version-min=12.0",
+      "-arch", process.arch === "arm64" ? "arm64" : "x86_64", join(engine, "host", "instances", "project-launcher.m"),
+      "-o", join(app, "dist", "instances", "MorkaProject")]);
+  }
   await copyFile(join(dirname(electron), "LICENSE"), join(resources, "LICENSE.electron.txt"));
   await copyFile(join(dirname(electron), "LICENSES.chromium.html"), join(resources, "LICENSES.chromium.html"));
   await rm(join(resources, "default_app.asar"), { force: true });

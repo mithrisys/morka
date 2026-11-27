@@ -39,7 +39,7 @@ Linux also has a portable tarball. On Ubuntu 24.04 and newer, use the `.deb` to 
 
 **Choose an agent for each turn.** Ask Codex to build a feature, then ask Claude Code to refine it. Both work on the same draft, and their replies stay in one conversation. On macOS, project chat also supports ACP agents such as Hermes and Pi. [Agent setup and sessions](docs/app-authoring.md#agents-and-chat-sessions)
 
-**Put the agent behind a button.** The scratchpad’s button is an *agent action*. Your app passes a note to Codex or Claude Code and gets structured data back to display as checkboxes. You choose which apps can use your account, and Morka keeps the credentials outside the app. [Build an agent action](host/skills/morka-agent-action/SKILL.md)
+**Bring AI into any part of your app.** A notebook can suggest tags as you write, or a planner can turn a project brief into a checklist as you import it. An *agent action* lets your app send the relevant text to Codex or Claude Code and use the structured result in its workflow. You choose which apps can use your account, and Morka keeps your credentials outside the app. [Build an agent action](host/skills/morka-agent-action/SKILL.md)
 
 ## Clone it, share it, make it yours
 
@@ -60,8 +60,13 @@ npm ci
 npm start
 ```
 
-The [app authoring guide](docs/app-authoring.md) covers project structure and reusable skills. Type `/review` in app chat to exercise the main workflow at two window sizes. [Workflow review](docs/preview-scenarios.md) To work on Morka itself, see [Architecture](docs/architecture.md) and [Contributing](CONTRIBUTING.md).
+The [app authoring guide](docs/app-authoring.md) covers project structure and reusable skills. Type `/review` in app chat to exercise the main workflow at two window sizes. [Workflow review](docs/preview-scenarios.md)
 
-[Changelog](CHANGELOG.md) · [Issues](https://github.com/mithrisys/morka/issues) · [MIT License](LICENSE)
+## How to contribute
+
+- **Report a bug or suggest a feature.** For a bug, include your OS, Morka version, and the shortest steps that reproduce it. For a feature, describe what you were trying to do. [Open an issue](https://github.com/mithrisys/morka/issues/new)
+- **Send a fix or improve the docs.** Start a branch from `main`, keep the change focused, and open a pull request describing what changed and how you checked it. The [contributing guide](CONTRIBUTING.md) covers branch names, tests, and commits. The [architecture overview](docs/architecture.md) shows where the pieces fit.
+
+[Changelog](CHANGELOG.md) · [MIT License](LICENSE)
 
 Bundled third-party components retain their own licenses.

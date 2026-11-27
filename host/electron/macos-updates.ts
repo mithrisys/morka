@@ -10,6 +10,10 @@ type UpdateClient = Pick<MacUpdater, "autoDownload" | "autoInstallOnAppQuit" | "
 
 function channel(version: string) { return version.match(/^[^-]+-([^.]+)/)?.[1]; }
 
+function updateFailure(error: unknown) {
+  return error instanceof Error ? error.message.split("\n")[0] : "The update failed.";
+}
+
 export function updateError(current: string, supported: number[], candidate: { version: string; supportedRuntimeApis?: unknown }) {
   if (!isRuntimeVersion(candidate.version) || compareRuntimeVersions(candidate.version, current) <= 0) {
     return "The update must be newer than this installation.";
@@ -55,7 +59,7 @@ export class MacUpdates {
   }
 
   private failed(error: unknown) {
-    this.set({ status: "error", detail: error instanceof Error ? error.message.split("\n")[0] : "The update failed." });
+    this.set({ status: "error", detail: updateFailure(error) });
   }
 
   async check() {
@@ -70,10 +74,20 @@ export class MacUpdates {
       if (update.files?.length !== 1 || update.files[0].url !== `morka-${update.version}-macOS-arm64.zip`) {
         throw new Error("The release does not contain the expected Apple Silicon update.");
       }
-      this.set({ status: "downloading", version: update.version });
-      await this.client.downloadUpdate();
-      this.set({ status: "ready", version: update.version });
+      this.set({ status: "available", version: update.version });
     } catch (error) { this.failed(error); }
+  }
+
+  async download() {
+    if (this.state.status !== "available") return;
+    const { version } = this.state;
+    this.set({ status: "downloading", version });
+    try {
+      await this.client.downloadUpdate();
+      this.set({ status: "ready", version });
+    } catch (error) {
+      this.set({ status: "available", version, detail: updateFailure(error) });
+    }
   }
 
   async restart(beforeInstall: () => Promise<void>) {

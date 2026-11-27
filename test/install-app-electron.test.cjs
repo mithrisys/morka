@@ -47,10 +47,15 @@ async function testUpdateDownload(workspace) {
   const metadata = await readFile(join(workspace, feed));
   const archive = await readFile(join(workspace, zip));
   let corrupt = true;
+  let downloads = 0;
   const server = createServer((request, response) => {
     const path = new URL(request.url, "http://127.0.0.1").pathname;
     if (path === `/${feed}`) { response.end(metadata); return; }
-    if (path === `/${zip}`) { response.end(corrupt ? "corrupt update archive" : archive); return; }
+    if (path === `/${zip}`) {
+      downloads++;
+      response.end(corrupt ? "corrupt update archive" : archive);
+      return;
+    }
     response.writeHead(404).end();
   });
   server.listen(0, "127.0.0.1");
@@ -66,12 +71,16 @@ async function testUpdateDownload(workspace) {
     client.updateConfigPath = configuration;
     const updates = new MacUpdates(client, "1.0.0", [1], () => {});
     await updates.check();
-    assert.equal(updates.state.status, "error");
+    assert.deepEqual(updates.state, { status: "available", version });
+    assert.equal(downloads, 0);
+    await updates.download();
+    assert.equal(updates.state.status, "available");
     assert.match(updates.state.detail, /sha512|checksum/i);
     corrupt = false;
-    await updates.check();
+    await updates.download();
     assert.deepEqual(updates.state, { status: "ready", version });
-    console.log("PASS: the native update adapter rejects a corrupt archive and stages valid release metadata and bytes.");
+    assert.equal(downloads, 2);
+    console.log("PASS: the native update adapter waits for download approval, rejects a corrupt archive, and stages a valid retry.");
   } finally {
     client.closeServerIfExists();
     await new Promise(resolve => server.close(resolve));

@@ -16,7 +16,7 @@ test("only newer releases on the installed channel that preserve project APIs ca
   assert.match(updateError("1.0.0", [1], { ...compatible, supportedRuntimeApis: [2] }), /runtime API/);
 });
 
-test("an update downloads in the background and waits for a safe, explicit restart", async () => {
+test("an update waits for download approval and a safe, explicit restart", async () => {
   const client = new EventEmitter();
   let checks = 0;
   let installs = 0;
@@ -30,6 +30,13 @@ test("an update downloads in the background and waits for a safe, explicit resta
 
   await Promise.all([updater.check(), updater.check()]);
   assert.equal(checks, 1);
+  assert.equal(downloads, 0);
+  assert.equal(client.autoDownload, false);
+  assert.deepEqual(updater.state, { status: "available", version: "1.1.0" });
+  await updater.check();
+  assert.equal(checks, 1);
+  assert.equal(downloads, 0);
+  await Promise.all([updater.download(), updater.download()]);
   assert.equal(downloads, 1);
   assert.equal(client.autoInstallOnAppQuit, false);
   assert.equal(updater.state.status, "ready");
@@ -39,10 +46,13 @@ test("an update downloads in the background and waits for a safe, explicit resta
   assert.match(updater.state.detail, /Close your open projects/);
   await updater.restart(async () => {});
   assert.equal(installs, 1);
-  assert.deepEqual(states, ["checking", "downloading", "ready", "installing", "ready", "installing"]);
+  assert.deepEqual(states, ["checking", "available", "downloading", "ready", "installing", "ready", "installing"]);
   client.emit("error", new Error("macOS rejected the signature"));
   assert.equal(updater.state.status, "error");
   await updater.check();
+  assert.equal(updater.state.status, "available");
+  assert.equal(downloads, 1);
+  await updater.download();
   assert.equal(updater.state.status, "ready");
   client.emit("error", new Error("Ignored outside installation"));
   assert.equal(updater.state.status, "ready");

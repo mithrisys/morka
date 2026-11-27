@@ -30,6 +30,7 @@ type AddonResult = { value?: unknown; error?: string };
 type AppInstallResult = { path: string; openError: string } | { error: string };
 type ProjectSourceKind = "folder" | "archive" | "git";
 type MacUpdateState = { status: "idle" | "checking" | "current" }
+  | { status: "available"; version: string; detail?: string }
   | { status: "downloading"; version: string; percent?: number }
   | { status: "ready" | "installing"; version: string; detail?: string }
   | { status: "error"; detail: string };
@@ -41,6 +42,7 @@ interface Window {
     wakeProject(kind: ProjectSourceKind, gitUrl?: string): Promise<{ error: string } | undefined>;
     macUpdateState(): Promise<MacUpdateState | undefined>;
     checkMacUpdate(): Promise<void>;
+    downloadMacUpdate(): Promise<void>;
     restartForMacUpdate(): Promise<void>;
     onMacUpdate(listener: (state: MacUpdateState) => void): void;
     getPreview(): Promise<string | undefined>;

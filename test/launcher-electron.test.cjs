@@ -35,13 +35,14 @@ async function testLauncher() {
   const desktop = require("../dist/instances/desktop.js");
   const handoffs = new EventEmitter();
   const updateClient = new EventEmitter();
+  let updateDownloads = 0;
   let updateInstalls = 0;
   let projectRunning = true;
   const macUpdates = require("../dist/electron/macos-updates.js");
   macUpdates.runningProject = async () => projectRunning;
   updateClient.checkForUpdates = async () => ({ isUpdateAvailable: true,
     updateInfo: { version: "1.1.0", supportedRuntimeApis: [1], files: [{ url: "morka-1.1.0-macOS-arm64.zip" }] } });
-  updateClient.downloadUpdate = async () => {};
+  updateClient.downloadUpdate = async () => { updateDownloads++; };
   updateClient.quitAndInstall = () => {
     updateInstalls++;
     updateClient.emit("error", new Error("Test installation stopped."));
@@ -82,7 +83,12 @@ async function testLauncher() {
       await new Promise(resolve => setTimeout(resolve, 25));
     }
   })()`);
+  await waitForUpdate("1.1.0 is available");
+  assert.equal(updateDownloads, 0);
+  assert.equal(await evaluate("document.querySelector('#launcher-update-action').textContent"), "Download update");
+  await evaluate("document.querySelector('#launcher-update-action').click()");
   await waitForUpdate("1.1.0 is ready");
+  assert.equal(updateDownloads, 1);
   assert.equal(await evaluate("document.querySelector('#launcher-update-action').textContent"), "Restart to update");
   await evaluate("document.querySelector('#launcher-update-action').click()");
   await waitForUpdate("Close your open projects");

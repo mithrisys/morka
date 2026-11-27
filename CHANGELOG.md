@@ -2,6 +2,16 @@
 
 Release entries describe user-visible changes and upgrade steps, newest first.
 
+## 0.3.0-beta.5 (2026-11-27)
+
+The new quickstart walks you through building a personal desktop app with your existing Codex or Claude Code subscription. Try an AI feature on a meeting note, then change the layout while the note stays open. The README also explains how to switch agents, reuse Shadows, share an app, and contribute to Morka.
+
+### Installation
+
+Choose the download for your operating system and architecture below. The macOS build uses an ad-hoc signature and lacks Apple notarization. The README covers first launch on macOS. The Windows installer lacks a publisher signature.
+
+[Full changelog](https://github.com/mithrisys/morka/compare/v0.3.0-beta.4...v0.3.0-beta.5)
+
 ## 0.3.0-beta.4 (2026-11-24)
 
 Linux now has DEB and RPM installers for x64 and ARM64 alongside the portable archives. The installers add Morka to the application menu with its own icon. On Ubuntu 24.04 and newer, the DEB sets up the AppArmor profile for Electron's sandbox.

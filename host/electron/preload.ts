@@ -8,6 +8,7 @@ if (process.isMainFrame) {
       ipcRenderer.invoke("instance:wake", kind, gitUrl),
     macUpdateState: (): Promise<MacUpdateState | undefined> => ipcRenderer.invoke("mac-update:state"),
     checkMacUpdate: (): Promise<void> => ipcRenderer.invoke("mac-update:check"),
+    downloadMacUpdate: (): Promise<void> => ipcRenderer.invoke("mac-update:download"),
     restartForMacUpdate: (): Promise<void> => ipcRenderer.invoke("mac-update:restart"),
     onMacUpdate: (listener: (state: MacUpdateState) => void) => ipcRenderer.on("mac-update:state", (_event, state) => listener(state)),
     getPreview: (): Promise<string | undefined> => ipcRenderer.invoke("canvas:current"),

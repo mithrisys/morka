@@ -157,6 +157,7 @@ async function createLauncher() {
   window.once("closed", () => ipcMain.removeHandler("instance:wake"));
   ipcMain.handle("mac-update:state", event => { requireLauncher(event); return updates?.state; });
   ipcMain.handle("mac-update:check", event => { requireLauncher(event); return updates?.check(); });
+  ipcMain.handle("mac-update:download", event => { requireLauncher(event); return updates?.download(); });
   ipcMain.handle("mac-update:restart", event => {
     requireLauncher(event);
     return updates?.restart(async () => {
@@ -167,7 +168,7 @@ async function createLauncher() {
   let checkTimer: ReturnType<typeof setInterval> | undefined;
   window.once("closed", () => {
     clearInterval(checkTimer);
-    for (const channel of ["mac-update:state", "mac-update:check", "mac-update:restart"]) ipcMain.removeHandler(channel);
+    for (const channel of ["mac-update:state", "mac-update:check", "mac-update:download", "mac-update:restart"]) ipcMain.removeHandler(channel);
   });
   await window.loadFile(index);
   if (macDesktop) await registerCurrentDesktopRuntime();

@@ -41,6 +41,10 @@ Linux also has a portable tarball. On Ubuntu 24.04 and newer, use the `.deb` to 
 
 **Bring AI into any part of your app.** A notebook can suggest tags as you write, or a planner can turn a project brief into a checklist as you import it. An *agent action* lets your app send the relevant text to Codex or Claude Code and use the structured result in its workflow. You choose which apps can use your account, and Morka keeps your credentials outside the app. [Build an agent action](host/skills/morka-agent-action/SKILL.md)
 
+## Reuse skills across apps with Shadows
+
+A Shadow bundles agent skills, rules, and optional assets you can reuse across projects. For example, pack your design rules, icons, and example styles into a Shadow so your agent can follow the same design in your next app. Open **Shadows** in the toolbar and choose **New Shadow** to create one or **Install Shadow** to use one in the current app. [Shadow guide](docs/app-authoring.md#plugin-shadow)
+
 ## Clone it, share it, make it yours
 
 Click **Clone** in an open app to start a new version in its own Git repository. You could keep your meeting scratchpad and turn the copy into an interview notebook. Apps created in the installed desktop version get lightweight launchers that share Morka’s Electron and Node.js runtime. Each app keeps its own dependencies and appears under its own name in your system’s application menu or Applications folder.

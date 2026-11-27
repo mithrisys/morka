@@ -1,84 +1,58 @@
 <p align="center">
-  <img src="host/branding/morka-icon.png" width="112" height="112" alt="">
+  <img src="host/branding/morka-icon.png" width="96" height="96" alt="">
 </p>
 <h1 align="center">Morka</h1>
-<p align="center"><strong>Wish there were an AI-powered desktop app for that?</strong><br>
-Just tell Morka what you want. It handles the rest.</p>
+<p align="center"><strong>Build the desktop app you wish existed. Change it while you use it.</strong></p>
 <p align="center">
   <a href="https://github.com/mithrisys/morka/releases"><strong>Download Morka</strong></a>
-  · <a href="#quickstart">Quickstart</a>
-  · <a href="docs/app-authoring.md">App authoring</a>
-  · <a href="docs/architecture.md">Architecture</a>
-</p>
-<p align="center">
-  <a href="https://github.com/mithrisys/morka/actions/workflows/ci.yml"><img src="https://github.com/mithrisys/morka/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status for main"></a>
+  · <a href="#quickstart">Build your first app</a>
+  · <a href="#run-morka-from-source">Run from source</a>
 </p>
 
-Morka turns the tools you wish you had into desktop apps you can run, refine, and share. Use the AI agents you already have on your computer. With Codex or Claude Code, your existing subscription can power both the work of building your app and the AI features inside it, without a separate API key or API bill. Morka takes care of project setup, dependencies, builds, and live preview.
+Morka lets you build personal desktop apps for macOS, Windows, and Linux by chatting with an AI agent. Use your existing Codex or Claude Code subscription to write the app and power the AI features inside it, without setting up a separate API key.
 
-## Install Morka
-
-Grab the desktop preview from [GitHub Releases](https://github.com/mithrisys/morka/releases). The downloads bundle Node.js and npm.
-
-| Platform | Install the desktop preview |
-| --- | --- |
-| macOS · Apple Silicon | Open the DMG and drag Morka into Applications. |
-| Windows · x64 and ARM64 | Run the setup executable for your architecture. |
-| Linux · x64 and ARM64 | Install the `.deb` on Debian or Ubuntu with `sudo apt install ./morka-*.deb`, or the `.rpm` on Fedora with `sudo dnf install ./morka-*.rpm`. Open **Morka** from the application menu. |
-
-The Linux tarball remains available for portable use on systems that permit Electron's sandbox. On Ubuntu 24.04 and newer, use the `.deb` to configure the app's AppArmor profile at installation. All Linux formats include Node.js and npm.
-
-Each release provides `SHA256SUMS.txt` and notes on platform support, signing, and upgrades.
+Say you keep a scratchpad open during meetings. You want one button that reads the messy notes and pulls out what you promised to do. With Morka, you can ask for that button, try it on a note, and keep shaping the app from the chat beside it. Tomorrow, open your scratchpad by name from Applications, the Start menu, or your Linux app menu.
 
 ## Quickstart
 
-1. Launch Morka. Swipe right on the launcher or focus the create control and press Enter. Name your app and pick a folder. To launch an existing app, select **or wake up a morka…** and choose its folder, choose a ZIP or TAR.GZ archive, or enter its Git URL.
-2. Click the brain icon to open **AI setup** and check your local agent sign-in.
-3. Open **Chat**, select an agent, and describe what you want.
+1. **Install the desktop preview.** Choose the release asset for your operating system and architecture. Morka includes Node.js and npm. For this walkthrough, have the Codex or Claude Code CLI installed and signed in on your computer. [Downloads and release notes](https://github.com/mithrisys/morka/releases)
+2. **Create your app.** Open Morka and swipe right on the launcher, or focus the create button and press Enter. Name the app *Meeting Scratchpad* and choose a folder. In the app window, click the brain icon to check your sign-in under **AI setup**.
+3. **Give it a job.** Open **Chat**, pick your agent, and paste this prompt.
 
-```text
-Build a desktop app for my meeting notes. Save notes locally and add a
-button that turns the current note into a short list of action items.
-```
+   > Build me a meeting scratchpad that saves my notes locally. Add a “Find action items” button that uses my AI agent to turn the current note into a checklist. Keep the original note so I can check what the agent picked up.
 
-Your agent works in a draft while the app stays open. Morka builds the change, checks that the app starts and its page loads, then publishes the source to your checkout. You can keep chatting to refine the result.
+4. **Try the button.** Once the app updates, type “I’ll send Maya the mockups on Friday. We also talked about the new logo.” Click **Find action items** and approve access to your local agent account when Morka asks. Look for the promise to send the mockups in the checklist.
+5. **Make a change with the note still open.** Ask “Put the checklist beside my note so I can read both at once.” Watch the layout update in the same window. To try another agent, pick it beside the message field and send your next request in the same chat.
 
-New apps include accessible form and layout defaults and fast Node test scripts. Type `/review` in app chat to run app checks and exercise the main workflow at two desktop sizes. Direct stylesheet edits keep the current page and input in place. See [workflow review](docs/preview-scenarios.md).
+### Desktop downloads
 
-## AI in your apps
+| Platform | Architecture | What to install |
+| --- | --- | --- |
+| macOS | Apple Silicon | Open the DMG and drag Morka into Applications. |
+| Windows | x64 or ARM64 | Run the setup executable for your architecture. |
+| Linux | x64 or ARM64 | On Debian or Ubuntu, run `sudo apt install ./morka-*.deb` from your download folder. On Fedora, use `sudo dnf install ./morka-*.rpm`. |
 
-An **agent action** lets a button or another app control call Codex or Claude Code through Morka. The app sends the action the data it needs, such as the current meeting note, and gets back validated JSON it can use in the UI. Morka asks for permission before the app first uses a local account, and the account stays with the host.
+Linux also has a portable tarball. On Ubuntu 24.04 and newer, use the `.deb` to install the AppArmor profile for Electron. Each release includes checksums and platform signing notes. [GitHub Releases](https://github.com/mithrisys/morka/releases)
 
-You can also choose an [Agent Client Protocol (ACP) agent for project chat](docs/app-authoring.md#agents-and-chat-sessions). For an action manifest and JSON Schema example, see the [agent action guide](host/skills/morka-agent-action/SKILL.md).
+## How your app grows
 
-## Your app is a Git repo
+**Keep your place through edits.** Morka restores the current page, form input, focus, and scroll position after a code update. Apps can also preserve their own state, such as a selected tab or filter. If an edit fails its build or preview check, the last working version stays open and the agent keeps its draft for repair. [Live updates and app state](docs/app-authoring.md#run-and-update-the-app)
 
-Every app gets a source checkout with its own dependency lockfile. Chat history, account permissions, and app data live in a private profile outside the source. Each chat gets its own draft. If a build or preview check fails, Morka keeps the last working release running and saves the draft for repair.
+**Choose an agent for each turn.** Ask Codex to build a feature, then ask Claude Code to refine it. Both work on the same draft, and their replies stay in one conversation. On macOS, project chat also supports ACP agents such as Hermes and Pi. [Agent setup and sessions](docs/app-authoring.md#agents-and-chat-sessions)
 
-```text
-my-app/
-├── app/                    # Editable source and app dependencies
-│   ├── morka.project.json  # Runtime, project rules, and agent actions
-│   ├── package.json
-│   └── package-lock.json
-├── .morka/                 # Launcher and release metadata
-├── package.json            # Pinned Morka runtime and packager
-└── package-lock.json
-```
+**Put the agent behind a button.** The scratchpad’s button is an *agent action*. Your app passes a note to Codex or Claude Code and gets structured data back to display as checkboxes. You choose which apps can use your account, and Morka keeps the credentials outside the app. [Build an agent action](host/skills/morka-agent-action/SKILL.md)
 
-Reuse instructions, agent skills, and assets across apps with [Shadows](docs/app-authoring.md#plugin-shadow). For the preview lifecycle and release layout, see [Architecture](docs/architecture.md).
+## Clone it, share it, make it yours
 
-## Share your app
+Click **Clone** in an open app to start a new version in its own Git repository. You could keep your meeting scratchpad and turn the copy into an interview notebook. Apps created in the installed desktop version get lightweight launchers that share Morka’s Electron and Node.js runtime. Each app keeps its own dependencies and appears under its own name in your system’s application menu or Applications folder.
 
-Publish your app's Git repository so others can open it in Morka or run it with `npm ci` and `npm start` from the app repository root. Recipients connect their own supported agent account for AI features.
+To share an app, send its Git URL or a ZIP or TAR.GZ archive of the project. The recipient opens Morka, chooses **or wake up a morka…**, and pastes the URL or picks the archive. Git URL imports require Git. Notes stored in Morka’s private data directory, chat history, and account permissions stay on your machine. The recipient connects their own account for AI features.
 
-Projects created in the desktop app declare a minimum Morka version and runtime API in `.morka/release.json`. Project launchers share the active Morka installation. A compatible update opens the project directly, and an incompatible runtime API can trigger a guided upgrade in Morka. On macOS, each project gets a lightweight `.app` in `~/Applications`. Windows and Linux add shortcuts to their application menus. See [desktop runtime compatibility](docs/app-authoring.md#choose-a-desktop-runtime).
-
-Run `npm run package:mac` from the app repository to create a self-contained `.app` in `dist/`. A project declaring runtime requirements uses the newest registered compatible installation at build time. For a legacy checkout without requirements, run `npm ci` first. The output includes Electron, Node.js and the app's prepared dependencies, so it can launch offline without Morka installed.
+On macOS, you can also run `npm run package:mac` from the app repository to export a self-contained `.app` that opens offline on a Mac without Morka installed. [Packaging and runtime compatibility](docs/app-authoring.md#choose-a-desktop-runtime)
 
 ## Run Morka from source
 
-Use Node.js 24 or newer and npm to build the Morka host.
+To build and launch the desktop host, use Node.js 24 or newer and npm.
 
 ```sh
 git clone https://github.com/mithrisys/morka.git
@@ -87,8 +61,8 @@ npm ci
 npm start
 ```
 
-See [Contributing](CONTRIBUTING.md) for the development workflow, [Changelog](CHANGELOG.md) for release notes, and [GitHub Issues](https://github.com/mithrisys/morka/issues) for bug reports and feature requests.
+The [app authoring guide](docs/app-authoring.md) covers project structure and reusable skills. Type `/review` in app chat to exercise the main workflow at two window sizes. [Workflow review](docs/preview-scenarios.md) To work on Morka itself, see [Architecture](docs/architecture.md) and [Contributing](CONTRIBUTING.md).
 
-## License
+[Changelog](CHANGELOG.md) · [Issues](https://github.com/mithrisys/morka/issues) · [MIT License](LICENSE)
 
-Morka is distributed under the [MIT License](LICENSE). Bundled third-party components retain their own licenses.
+Bundled third-party components retain their own licenses.
